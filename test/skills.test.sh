@@ -142,14 +142,20 @@ done
 for scope in "$SKILLS_DIR" "$FURCA_HOME/templates" "$FURCA_HOME/channel" "$FURCA_HOME/agents" "$FURCA_HOME/.aitriage-baseline.json"; do
   [[ -e "$scope" ]] || continue
 
-  hardcoded_repo="$(grep -rnE -- '--repo[= ]+[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+' "$scope" || true)"
+  # Скомпилированный питон (`__pycache__/*.pyc`) в git не лежит, но на диске
+  # оказывается после любого прогона и хранит абсолютные пути сборки — проверка
+  # ловила их и краснела на ровном месте, при целом исходнике. Смотрим только
+  # текстовые файлы и мимо кэша интерпретатора.
+  SCAN=(-rnE -I --exclude-dir=__pycache__ --exclude=*.pyc)
+
+  hardcoded_repo="$(grep "${SCAN[@]}" -- '--repo[= ]+[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+' "$scope" || true)"
   [[ -z "$hardcoded_repo" ]] || {
     echo "FAIL: зашит конкретный репозиторий (адрес определяется из remote, а не пишется в ядро):"
     echo "$hardcoded_repo"
     exit 1
   }
 
-  home_path="$(grep -rnE -- '(/Users/|/home/)[A-Za-z0-9]' "$scope" || true)"
+  home_path="$(grep "${SCAN[@]}" -- '(/Users/|/home/)[A-Za-z0-9]' "$scope" || true)"
   [[ -z "$home_path" ]] || {
     echo "FAIL: абсолютный путь в домашний каталог (личное живёт в профиле пользователя):"
     echo "$home_path"

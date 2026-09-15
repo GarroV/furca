@@ -26,6 +26,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 # Ниже этого расхода ограничителя не существует.
@@ -34,6 +35,12 @@ WARN_PCT = 70
 # Волна, запущенная в пределах этого окна, считается одной волной: агенты
 # запускаются подряд, а живут десятками минут.
 WAVE_WINDOW_SEC = 600
+
+# Признак жизни стройки моложе этого — она тратит то же окно прямо сейчас.
+# Полтора часа при пятичасовом окне: стройка, от которой столько нет ни
+# удержания хода, ни запуска агента, либо кончилась, либо стоит, и сужать из-за
+# неё волну живой стройке значило бы наказывать за чужой забытый маркер.
+ACTIVE_BUILD_SEC = 90 * 60
 
 # Инструменты, которыми запускают агентов. Имя зависит от харнесса, поэтому их
 # два: система ставится и там, где инструмент называется иначе.
@@ -62,6 +69,56 @@ def recommended_width(pct: int) -> int:
     if pct >= 50:
         return 3
     return 4
+
+
+def active_builds(kb, self_root, now: float):
+    """Пути других строек, которые прямо сейчас тратят то же окно подписки.
+
+    Пятичасовое окно — одно на аккаунт, а стройки идут в разных проектах и друг
+    о друге не знают: 15.09.2026 три стройки стартовали в одно окно, каждая
+    считала остаток своим, и втроём они выбрали его за пять часов, не дойдя ни
+    одна до раздачи блоков (#105). Реестр строек лежит рядом — по маркеру на
+    проект; здесь он читается целиком, чтобы ширину волны делить на всех живых.
+
+    Любая ошибка чтения — пустой список: ограничитель, сужающий волну по
+    догадке, вреднее отсутствующего.
+    """
+    others = []
+    try:
+        files = sorted(kb.builds_dir().glob("*.json"))
+    except Exception:
+        return others
+
+    for f in files:
+        try:
+            marker = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(marker, dict):
+            continue
+        project = marker.get("project")
+        if not project or marker.get("released_reason"):
+            continue
+        try:
+            if Path(project).resolve() == Path(self_root).resolve():
+                continue
+        except Exception:
+            continue
+
+        stamps = []
+        for key in ("last_hold_at", "started_at"):
+            raw = marker.get(key)
+            if isinstance(raw, str):
+                try:
+                    stamps.append(datetime.fromisoformat(raw).timestamp())
+                except Exception:
+                    pass
+        launches = marker.get("wave_launches")
+        if isinstance(launches, list):
+            stamps += [t for t in launches if isinstance(t, (int, float))]
+        if stamps and now - max(stamps) < ACTIVE_BUILD_SEC:
+            others.append(project)
+    return others
 
 
 def fresh_launches(marker: dict, now: float):
@@ -124,7 +181,17 @@ def main() -> int:
 
     now = time.time()
     launches = fresh_launches(marker, now)
-    width = recommended_width(pct)
+    others = active_builds(kb, root, now)
+    # Остаток делится на всех живых, включая себя: иначе каждая стройка
+    # планирует волну на полное окно, а тратят они его вместе.
+    width = max(1, recommended_width(pct) // (len(others) + 1))
+    shared = ""
+    if others:
+        names = ", ".join(Path(p).name for p in others)
+        shared = (
+            f"\nОкно делят {len(others) + 1} стройки — кроме этой идут: {names}. "
+            "Остаток поделён между ними: волна у каждой уже, чем была бы в одиночку."
+        )
 
     if len(launches) >= width:
         deny(
@@ -135,6 +202,7 @@ def main() -> int:
             "следующий. Волна из нескольких агентов сожжёт окно быстрее и "
             "оборвётся вся разом — причём на проверке, которую каждый делает "
             "последней, так что не примется ни один блок, даже с готовым кодом."
+            + shared
         )
         return 0
 
@@ -152,7 +220,7 @@ def main() -> int:
         "оборвётся, причина должна быть видна в файле состояния, а не только в "
         "уведомлении, которое исчезнет вместе с сессией. И потребуй от агентов "
         "коммита после каждой задачи — тогда обрыв стоит одной задачи, а не "
-        "всего блока."
+        "всего блока." + shared
     )
     return 0
 

@@ -127,6 +127,60 @@ call_guard "$b"
 expect_warn "старые запуски не считаются текущей волной"
 
 echo
+echo "ширина волны: окно одно на все стройки"
+
+# Пятичасовое окно подписки — одно на аккаунт, а стройки о нём договариваться не
+# умеют: 15.09.2026 три стройки стартовали в одно окно и втроём выбрали его за
+# пять часов, не дойдя ни одна до раздачи блоков (#105). Ограничитель обязан
+# делить остаток на число живых строек, а не отдавать каждой целиком.
+# Маркеры прошлых блоков этого файла живы и свежи — для ограничителя они такие
+# же соседи, как настоящие стройки. Убираем, чтобы проверять именно счёт соседей,
+# а не остатки предыдущих проверок.
+rm -f "$HOME/.claude/furca/builds/"*.json
+solo="$(make_project solo)"
+python3 "$KEEP" --start "$solo" > /dev/null
+set_usage 75
+reset_wave
+call_guard "$solo"
+expect_warn "одна стройка, 75% — первый агент разрешён"
+call_guard "$solo"
+expect_warn "одна стройка, 75% — второй агент в пределах ширины"
+call_guard "$solo"
+expect_deny "одна стройка, 75% — третий агент сверх ширины"
+
+neighbour="$(make_project neighbour)"
+python3 "$KEEP" --start "$neighbour" > /dev/null
+reset_wave
+call_guard "$solo"
+expect_warn "две стройки — первый агент разрешён"
+[[ "$GUARD_OUT" == *"кроме этой идут"* ]] && ok "соседняя стройка названа в предупреждении" || bad "про соседнюю стройку не сказано"
+call_guard "$solo"
+expect_deny "две стройки делят окно — ширина вдвое уже"
+
+# Стройка, с которой давно нет ни одного признака жизни, окно не тратит:
+# сужать волну живой стройке из-за брошенного маркера значило бы наказывать за
+# чужой забытый прогон.
+python3 - "$HOME" "$neighbour" <<'STALE'
+import json, os, sys, glob, time
+from datetime import datetime, timedelta
+old = (datetime.now() - timedelta(hours=4)).isoformat()
+for f in glob.glob(os.path.join(sys.argv[1], ".claude", "furca", "builds", "*.json")):
+    d = json.load(open(f))
+    # Маркер хранит путь после resolve() (/private/var...), а фикстура знает его
+    # как /var... — сравниваем по имени каталога, иначе состаривание промахнётся.
+    if str(d.get("project", "")).rstrip("/").endswith("/" + os.path.basename(sys.argv[2])):
+        d["started_at"] = old
+        d["last_hold_at"] = old
+        d["wave_launches"] = [time.time() - 4 * 3600]
+        json.dump(d, open(f, "w"))
+STALE
+reset_wave
+call_guard "$solo"
+expect_warn "давно молчащая стройка окно не делит — первый агент"
+call_guard "$solo"
+expect_warn "давно молчащая стройка окно не делит — второй агент"
+
+echo
 echo "ширина волны: собой ничего не ломает"
 set +e
 printf 'мусор' | python3 "$GUARD" >/dev/null 2>&1

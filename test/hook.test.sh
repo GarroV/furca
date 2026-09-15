@@ -254,6 +254,19 @@ json.dump(data, open(os.path.join(home, ".claude.json"), "w"))
 USAGE
 }
 
+# То же, но снимок сделан $2 минут назад: харнесс переписывает его рывками, и
+# протухшая цифра — не факт, а воспоминание.
+set_usage_aged() {
+  python3 - "$HOME" "$1" "$2" <<'USAGE'
+import json, os, sys, time
+home, pct, age_min = sys.argv[1], sys.argv[2], float(sys.argv[3])
+data = {"cachedUsageUtilization": {
+    "fetchedAtMs": int((time.time() - age_min * 60) * 1000),
+    "utilization": {"five_hour": {"utilization": int(pct), "resets_at": None}}}}
+json.dump(data, open(os.path.join(home, ".claude.json"), "w"))
+USAGE
+}
+
 lim="$(make_project limit '| T001 | api | — | todo | Работа |')"
 python3 "$HOOK" --start "$lim" > /dev/null
 
@@ -283,5 +296,64 @@ expect_hold "лимит вернулся — сохранение предлаг
 set_usage none
 call_hook "$lim"
 expect_hold "нет данных о лимите — сторож ведёт себя как обычно"
+
+# Протухший снимок не основание останавливать стройку. 15.09.2026 сторож прочитал
+# 100% из снимка полуторачасовой давности и снял стройку с непрерывного режима —
+# а окно к тому моменту уже сбросилось и имело 4,5 часа запаса
+# (GarroV/dotfiles#16). Цена ложного останова — часы простоя; цена пропущенного
+# обрыва теперь мала, потому что состояние коммитится каждые пару ходов.
+stale="$(make_project stale '| T001 | api | — | todo | Работа |')"
+python3 "$HOOK" --start "$stale" > /dev/null
+set_usage_aged 99 40
+call_hook "$stale"
+expect_hold "протухший снимок — стройка продолжается"
+grep -q "израсходовано" <<<"$HOOK_STDERR" && { echo "FAIL: стройка остановлена по снимку сорокаминутной давности; stderr: $HOOK_STDERR"; exit 1; }
+
+# Свежий снимок с той же цифрой — останов по-прежнему обязателен.
+set_usage_aged 99 2
+call_hook "$stale"
+expect_hold "свежий снимок 99% — ход удержан ради сохранения"
+grep -q "израсходовано" <<<"$HOOK_STDERR" || { echo "FAIL: свежий снимок за порогом не остановил стройку; stderr: $HOOK_STDERR"; exit 1; }
+
+# 15. Состояние стройки не закоммичено. Единственная точка сохранения раньше
+# стояла на пороге лимита — то есть ровно там, где у сессии меньше всего шансов
+# её исполнить. 15.09.2026 в promus так едва не потерялись три решения владельца:
+# записаны в рабочее дерево и не закоммичены, сессия оборвана. Сторож обязан
+# требовать коммит задолго до всякого лимита — и ровно один раз за эпизод, иначе
+# он превратится в фон, который перестают читать.
+dirty="$(make_project dirty '| T001 | api | — | todo | Работа |')"
+python3 "$HOOK" --start "$dirty" > /dev/null
+set_usage 10
+
+printf '%s\n' '2026-09-15 [dispatcher] взял T001' >> "$dirty/progress.md"
+call_hook "$dirty"
+expect_hold "состояние изменилось только что — сторож держит как обычно"
+grep -q "не закоммичено" <<<"$HOOK_STDERR" && { echo "FAIL: коммит потребован с первого же хода — это шум, а не сторож"; exit 1; }
+
+printf '%s\n' '2026-09-15 [dispatcher] ещё запись' >> "$dirty/progress.md"
+call_hook "$dirty"
+expect_hold "состояние не закоммичено второй ход — ход удержан ради коммита"
+grep -q "не закоммичено" <<<"$HOOK_STDERR" || { echo "FAIL: не сказано, что состояние не закоммичено; stderr: $HOOK_STDERR"; exit 1; }
+grep -q "progress.md" <<<"$HOOK_STDERR" || { echo "FAIL: не названо, что именно разошлось с HEAD; stderr: $HOOK_STDERR"; exit 1; }
+
+# Второй раз подряд про то же не напоминаем: диспетчер мог не закоммитить
+# сознательно, и долбить его каждый ход значит жечь лимит на уговоры.
+printf '%s\n' '2026-09-15 [dispatcher] третья запись' >> "$dirty/progress.md"
+call_hook "$dirty"
+expect_hold "про незакоммиченное состояние напоминаем один раз за эпизод"
+grep -q "не закоммичено" <<<"$HOOK_STDERR" && { echo "FAIL: напоминание про коммит повторилось на следующем же ходу"; exit 1; }
+
+# Закоммитили — эпизод закрыт, и следующее расхождение должно поймать заново.
+git -C "$dirty" add -A
+git -C "$dirty" -c user.email=t@t -c user.name=t commit -qm "chore(state): журнал"
+call_hook "$dirty"
+expect_hold "состояние закоммичено — сторож держит стройку как обычно"
+
+printf '%s\n' '2026-09-15 [dispatcher] после коммита' >> "$dirty/progress.md"
+call_hook "$dirty"
+expect_hold "новое расхождение, первый ход — молчим"
+printf '%s\n' '2026-09-15 [dispatcher] и ещё' >> "$dirty/progress.md"
+call_hook "$dirty"
+grep -q "не закоммичено" <<<"$HOOK_STDERR" || { echo "FAIL: после коммита сторож больше не ловит расхождение; stderr: $HOOK_STDERR"; exit 1; }
 
 echo "PASS"
