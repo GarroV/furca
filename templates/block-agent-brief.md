@@ -14,7 +14,7 @@ You are the block agent of an autonomous build, responsible for block
 `{{branch name}}`. Work **only there**: do not switch branches, do not reach into
 the main copy.
 
-## Your stand: ports and compose project name
+## Your stand: ports, compose project name, scratch directory
 
 - **Ports come only from your range:** {{port range}}. **All** of the stand's ports
   come from it, not just one: application, database, demo, healthcheck. A free port
@@ -26,6 +26,17 @@ the main copy.
   the repository, so without your own name your `up` will hijack a neighbour's
   containers and override their ports, and `down -v` will destroy their database
   along with the volume.
+- **Your scratch directory is `{{scratch directory}}`** — everything you write
+  outside the repository goes there and nowhere else: run logs, throwaway scripts,
+  copies taken before breaking a file. The session's scratch directory is shared by
+  the whole wave, and the obvious file name is the same for everyone: on a live run
+  two blocks redirected their gate run into the same `check.log`, the second `>`
+  truncated the first, both then appended from their own offsets, `EXIT=` appeared
+  twice with no way to tell whose it was, and one block spent ten minutes reading a
+  neighbour's progress as its own. Nothing failed — the file existed and looked
+  plausible. Earlier the same collision cost a block its own tooling: a neighbour's
+  `porcha.py` was overwritten, and from the owner's side the file had "disappeared
+  by itself".
 - **`down -v` only for your own project.** Verified on a live run: cleaning up
   someone else's stand destroyed the database of a block that was mid-smoke, and
   from its side it looked like "the data disappeared by itself".
@@ -100,7 +111,8 @@ So, while you work:
   whole file to find one function. Read the whole file when you are about to change
   it, not to look something up.
 - **Long output goes to a file, not into you.** A full test run, a build log, a
-  dependency tree: redirect it, then grep the file for what you need. The line you
+  dependency tree: redirect it into your own scratch directory (above), then grep
+  the file for what you need. The line you
   are looking for is worth reading; the four hundred lines around it are not.
 - **Do not re-read what you already read.** If you no longer remember it, say so
   and read the narrow part again — not the file again.

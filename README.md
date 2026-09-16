@@ -122,15 +122,19 @@ for t in test/*.test.sh; do bash "$t"; done
 
 Тесты изолированы: профиль и настройки пользователя они не трогают.
 
-Один из них — `test/channel-db.test.sh` — требует интерпретатора с зависимостями
-канала и **падает**, если их нет: печатает, чего не хватает, вместо того чтобы
-пропустить проверку. Разовая подготовка:
+Один из них — `test/channel-db.test.sh` — требует настоящего Postgres и
+интерпретатора с зависимостями канала и **падает**, если их нет: печатает, чего не
+хватает, вместо того чтобы пропустить проверку. Разовая подготовка — одна команда,
+после неё прогон находит окружение сам:
 
 ```
-python3 -m venv /tmp/furca-channel-venv
-/tmp/furca-channel-venv/bin/pip install asyncpg aiohttp aiogram
-FURCA_TEST_PYTHON=/tmp/furca-channel-venv/bin/python bash test/channel-db.test.sh
+bash test/setup-channel-venv.sh
 ```
+
+Скрипт идемпотентен, ставит закреплённые версии из `channel/bot/requirements.txt`
+и кладёт venv в `~/.claude/furca/channel-venv` (переопределяется
+`FURCA_CHANNEL_VENV`). Postgres нужен свой, локальный: `pg_isready` должен
+отвечать.
 
 ## Как вести проект
 

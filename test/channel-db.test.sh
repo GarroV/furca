@@ -11,11 +11,22 @@ set -euo pipefail
 # принимают решение «адресация работает», не проверив её ни разу.
 #
 # Переменные:
-#   FURCA_TEST_PYTHON — интерпретатор с asyncpg (по умолчанию python3)
+#   FURCA_TEST_PYTHON — интерпретатор с asyncpg (по умолчанию — venv из
+#                       test/setup-channel-venv.sh, иначе python3)
 #   FURCA_TEST_DB     — имя временной базы (по умолчанию forge_channel_test)
 FURCA_HOME="$(cd "$(dirname "$0")/.." && pwd)"
 BOT_DIR="${1:-$FURCA_HOME/channel/bot}"
-PYTHON="${FURCA_TEST_PYTHON:-python3}"
+# Интерпретатор: явно заданный, иначе штатный venv окружения разработки, иначе
+# системный python3. Пока путь к venv жил только в тексте ошибки, его набирали
+# руками — то есть почти никогда, и полный прогон месяцами шёл 13/14 (#99).
+CHANNEL_VENV="${FURCA_CHANNEL_VENV:-$HOME/.claude/furca/channel-venv}"
+if [[ -n "${FURCA_TEST_PYTHON:-}" ]]; then
+  PYTHON="$FURCA_TEST_PYTHON"
+elif [[ -x "$CHANNEL_VENV/bin/python" ]]; then
+  PYTHON="$CHANNEL_VENV/bin/python"
+else
+  PYTHON="python3"
+fi
 DB_NAME="${FURCA_TEST_DB:-forge_channel_test}"
 
 [[ -d "$BOT_DIR" ]] || { echo "FAIL: каталог бота не найден: $BOT_DIR"; exit 1; }
@@ -26,10 +37,9 @@ done
 if ! "$PYTHON" -c 'import asyncpg, aiohttp, aiogram' >/dev/null 2>&1; then
   cat >&2 <<'MSG'
 FAIL: у интерпретатора нет зависимостей канала — тесты базы гонять нечем.
+Подними окружение один раз, и прогон найдёт его сам:
 
-  python3 -m venv /tmp/furca-channel-venv
-  /tmp/furca-channel-venv/bin/pip install asyncpg aiohttp aiogram
-  FURCA_TEST_PYTHON=/tmp/furca-channel-venv/bin/python bash test/channel-db.test.sh
+  bash test/setup-channel-venv.sh
 MSG
   exit 1
 fi
