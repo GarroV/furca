@@ -21,6 +21,13 @@ were touched, what was verified and how.
   and a background agent gets killed by the watchdog after a long silence: on one
   project the full suite took four and a half minutes, and five agents died on it
   in a row.
+- **Never wait with `sleep`.** `sleep 300; <check>` in Bash does not wait: the
+  harness sends it to the background and returns within a second, so you spend a
+  turn — and a full re-read of your context — on nothing. Wait for something to
+  finish with `Monitor` and an until-loop (`until <condition>; do sleep 20; done`);
+  load the tool if it is missing (`ToolSearch`, `select:Monitor`) instead of
+  falling back to `sleep`. Two turns in a row that changed no file mean you are
+  polling, not working.
 - **Verify by running things**, and separate honestly what you verified from what
   you assume.
 - **Do not step outside the task**: neighbouring files, other blocks, "while I'm

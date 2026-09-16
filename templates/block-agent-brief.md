@@ -231,6 +231,35 @@ silent for ten minutes.
 - **Split a long operation or show progress**, so that ten minutes of silence never
   falls between two outputs.
 
+## Waiting for something to finish: never with `sleep`
+
+`sleep 300; <check the state>` in Bash **does not wait**. The harness sends such a
+command to the background and hands control back within a second: you get
+`Command running in background with ID: ...`, an empty result, and you take the
+next turn — and every turn of yours costs a full re-read of your context. Measured
+on one real build: 24 attempts to wait this way, 165 wasted turns out of 398,
+50 million tokens read from cache, **29% of the whole run's spend burnt in 15
+minutes of standing still**. Nothing fails, the report looks normal, and the cost
+is visible only in the transcript.
+
+Worse, whatever follows the `;` goes to the background too: `sleep 420; ... &&
+pytest ...` started a second test run on top of the one already going.
+
+- **Wait with `Monitor` and an until-loop** — the only real wait you have:
+  `until [ -f build/done ]; do sleep 20; done`. The `sleep` inside the loop is
+  fine: it runs inside one blocking call, not as a turn of yours. If `Monitor` is
+  not in your tool list yet, load it (`ToolSearch`, query `select:Monitor`) instead
+  of falling back to `sleep`.
+- **Keep one wait shorter than the watchdog's silence limit** (600 s): give the
+  loop a ceiling, and if the condition has not come true, start another wait rather
+  than let one call go silent for ten minutes.
+- **Two turns in a row that changed no file are not work, they are polling.**
+  Notice it on the second one and switch to a real wait. "I'll just check once
+  more" is exactly what the measurement above is made of.
+- **Do not start a background run you then poll for.** Either the command is short
+  enough to run in the foreground, or you launch it and wait for it with `Monitor`
+  on a condition it makes true (a file, a marker, an exit code in a log).
+
 ## Browser check, if your block has a page
 
 A page must be checked in a **live browser**, not only by reading the markup.
