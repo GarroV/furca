@@ -79,7 +79,10 @@ make_project() {
 }
 
 build="$(make_project build)"
-python3 "$KEEP" --start "$build" > /dev/null
+# Владельца маркера --start берёт из окружения (так его узнаёт команда стройки),
+# поэтому здесь он задаётся явно: иначе им стал бы id сессии, из которой идёт
+# прогон, а payload ниже приходит от 's1' — и сторож отпустил бы ход как чужой.
+CLAUDE_CODE_SESSION_ID=s1 python3 "$KEEP" --start "$build" > /dev/null
 big="$(make_transcript big 380000)"
 small="$(make_transcript small 90000)"
 

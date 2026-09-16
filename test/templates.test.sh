@@ -335,6 +335,7 @@ declare -a BRIEF_RULES=(
   'port range}}'                         # у стенда портов несколько, одного назначенного мало
   'compose project name}}'               # без своего имени up перехватывает контейнеры соседа
   'scratch directory}}'                  # каталог-черновик свой на блок: общий затирают одинаковые имена
+  'defect in how your copy was prepared'  # объявленная команда не стартует — дефект подготовки копии, не повод собирать свою
   'schema history has two'               # разведённые номера миграций не спасают граф схемы
 )
 for rule in "${BRIEF_RULES[@]}"; do

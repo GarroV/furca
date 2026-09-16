@@ -91,9 +91,15 @@ the main copy.
 - **The project's gates run before you hand the block over, not after.** The
   commands are in `docs/furca/plan.md`, section "Quality gates". A check that is red
   for you will be red at acceptance too — except there it costs a whole round trip.
-- **The dispatcher prepares the test-run environment.** Nothing to run tests with —
-  tell the dispatcher, do not set up your own: the dependency file and the runner
-  config are shared, and a parallel block would create them at the same time as you.
+- **The dispatcher prepares the test-run environment**, in this copy and in any
+  copy handed to an executor. Nothing to run tests with — tell the dispatcher, do
+  not set up your own: the dependency file and the runner config are shared, and a
+  parallel block would create them at the same time as you. **And do not quietly
+  fall back to a system interpreter or a command you assemble yourself**: on
+  16.09.2026 two blocks ran a whole session that way, green the whole time, while
+  acceptance and CI ran something else entirely. A declared command that will not
+  start is a defect in how your copy was prepared — report it, it is not yours to
+  work around.
 
 ## Context discipline
 
