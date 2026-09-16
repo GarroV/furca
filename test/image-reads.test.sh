@@ -57,6 +57,21 @@ print(json.dumps(p))" "$dir" "$file" "$tool" "$transcript")"
   GUARD_OUT="$(printf '%s' "$payload" | python3 "$GUARD" 2>/dev/null)"
 }
 
+# Роль, объявленная харнессом прямо в payload, — способ, которым он её сообщает
+# сегодня. `transcript_path` при этом указывает на ГЛАВНУЮ сессию, а не на файл
+# субагента: ровно поэтому опознание по метафайлу перестало работать молча.
+call_guard_agent_type() {
+  local dir="$1" file="$2" role="$3"
+  local payload
+  payload="$(python3 -c "
+import json,sys
+print(json.dumps({'session_id':'s1','cwd':sys.argv[1],'hook_event_name':'PreToolUse',
+  'tool_name':'Read','tool_input':{'file_path':sys.argv[2]},
+  'agent_type':sys.argv[3],
+  'transcript_path':'/Users/x/.claude/projects/p/s1.jsonl'}))" "$dir" "$file" "$role")"
+  GUARD_OUT="$(printf '%s' "$payload" | python3 "$GUARD" 2>/dev/null)"
+}
+
 make_project() {
   local dir="$WORK/$1"
   mkdir -p "$dir/docs/furca"
@@ -94,6 +109,20 @@ expect_deny "исполнителю картинка тоже не нужна: �
 
 call_guard "$build" "$shot" "$(make_role norma)"
 expect_silent "роль сверки смотрит картинки — она для этого и заведена"
+
+# Живой харнесс кладёт роль в payload, а в `transcript_path` — главную сессию.
+# Без этих трёх проверок поломка опознания проходит мимо тестов: старый способ
+# они гоняют на выдуманном пути субагента, которого в жизни уже нет. Поймано
+# стройкой meridius 16.09.2026, когда `norma` получала отказ на каждый снимок и
+# сверка экрана стала невыполнимой в принципе.
+call_guard_agent_type "$build" "$shot" norma
+expect_silent "роль объявлена харнессом в payload: сверка смотрит картинки"
+
+call_guard_agent_type "$build" "$shot" artifex
+expect_deny "роль объявлена харнессом в payload: блок-агенту по-прежнему нельзя"
+
+call_guard_agent_type "$build" "$shot" ""
+expect_deny "роли нет вовсе: диспетчер не исключение"
 
 call_guard "$build" "$tiny"
 expect_silent "мелкий файл дешевле запрета"
