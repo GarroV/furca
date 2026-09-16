@@ -11,6 +11,24 @@ id_in_list() {
 
 # Прогоняет все проверки ссылочной целостности по одной фикстуре.
 # Завершает весь скрипт (exit 1) при первом найденном нарушении.
+# Прячет трубы, которые разделителями не являются: экранированные (\|) и стоящие
+# внутри inline-кода. Подменяются на \x01 — символ, которого в тексте не бывает.
+mask_pipes() {
+  python3 -c '
+import re, sys
+row = sys.argv[1]
+row = row.replace("\\|", "\x01")
+row = re.sub(r"`[^`]*`", lambda m: m.group(0).replace("|", "\x01"), row)
+sys.stdout.write(row)
+' "$1"
+}
+
+# Возвращает спрятанные трубы на место — чтобы подсказка показывала поля так, как
+# они выглядят в файле.
+unmask_pipes() {
+  tr '\001' '|'
+}
+
 check_fixture() {
   local FIXTURE="$1"
   local TASKS="$FIXTURE/tasks.md"
@@ -63,6 +81,30 @@ check_fixture() {
       fi
     done
   done < <(grep -E '^\| *Q[0-9]{3} *\|' "$QUESTIONS" || true)
+
+  # Статус задачи — из объявленного перечня, и ничего кроме. Перечень парсят
+  # стройка и сводка, поэтому незнакомое значение не «странность в тексте», а
+  # задача, которая выпадает из всех счётчиков молча. Отдельно нужен `cancelled`:
+  # снятая решением задача не сделана и не падала, и пока статуса не было, она
+  # стояла в `failed` — на живом проекте две недели, всё это время показываясь
+  # владельцу как провал (#112).
+  local trow tstatus tid_s
+  while IFS= read -r trow; do
+    [[ -z "$trow" ]] && continue
+    tstatus="$(awk -F'|' '{print $5}' <<< "$trow" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    case "$tstatus" in
+      todo|in_progress|done|failed|cancelled) ;;
+      blocked:Q[0-9][0-9][0-9]) ;;
+      *)
+        tid_s="$(awk -F'|' '{print $2}' <<< "$trow" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+        echo "FAIL: [$FIXTURE] tasks.md ($tid_s): статус «${tstatus}» не из перечня"
+        echo "      Допустимы: todo, in_progress, done, failed, cancelled, blocked:Qnnn."
+        echo "      Задача, снятая решением, — cancelled со ссылкой на решение в тексте,"
+        echo "      а не failed (это провал, которого не было) и не done (работы не было)."
+        exit 1
+        ;;
+    esac
+  done < <(grep -E '^\| *T[0-9]{3} *\|' "$TASKS" || true)
 
   # Проверка 2: все blocked:Qnnn в tasks.md существуют в questions.md
   local qref
@@ -248,24 +290,34 @@ check_fixture() {
   # объявленной, — и колонки сдвинулись. Ошибка молчаливая: сводка не падает, она
   # показывает «кто = T170, T171» и решение, начинающееся со слова owner, и
   # читатель решает, что так и надо.
-  local drow did dwho dcols
+  local drow drow_m did dwho dcols
   while IFS= read -r drow; do
     [[ -z "$drow" ]] && continue
-    did="$(awk -F'|' '{print $2}' <<< "$drow" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    # Разделителем считается не всякая труба. Труба внутри inline-кода
+    # (`x: bytes | None`) и экранированная по правилам Markdown (\|) таблицу не
+    # делят — для читателя она целая. Пока проверка резала строку по сырому «|»,
+    # сигнатура функции в тексте решения давала «колонок 6 вместо пяти» и валила
+    # стройку, а починить строку правильно было нельзя: экранирование проверке
+    # не видно, помогало только выкинуть трубу из текста (#90).
+    drow_m="$(mask_pipes "$drow")"
+    did="$(awk -F'|' '{print $2}' <<< "$drow_m" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
     # Столбцов между внешними разделителями ровно пять: id, дата, решение, почему, кто.
-    dcols="$(awk -F'|' '{print NF-2}' <<< "$drow")"
+    dcols="$(awk -F'|' '{print NF-2}' <<< "$drow_m")"
     if [[ "$dcols" != "5" ]]; then
       echo "FAIL: [$FIXTURE] decisions.md ($did): колонок $dcols вместо пяти (id, дата, решение, почему, кто)"
       echo "      Формат объявлен неизменным — его парсят fabrica и cursus."
+      echo "      Лишний разделитель ищи здесь (каждое поле с новой строки):"
+      awk -F'|' '{for (i = 2; i < NF; i++) printf "        %d: %s\n", i - 1, $i}' <<< "$drow_m" \
+        | unmask_pipes
       exit 1
     fi
-    dwho="$(awk -F'|' '{print $6}' <<< "$drow" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    dwho="$(awk -F'|' '{print $6}' <<< "$drow_m" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
     if [[ "$dwho" != "owner" && "$dwho" != "auto" ]]; then
       echo "FAIL: [$FIXTURE] decisions.md ($did): в колонке «кто» значение «${dwho}», допустимы owner и auto"
       echo "      Чаще всего это сдвиг колонок, а не опечатка: сверь порядок полей со строкой заголовка."
       exit 1
     fi
-    if ! awk -F'|' '{print $3}' <<< "$drow" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+    if ! awk -F'|' '{print $3}' <<< "$drow_m" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
       echo "FAIL: [$FIXTURE] decisions.md ($did): во второй колонке не дата в формате ГГГГ-ММ-ДД"
       exit 1
     fi
