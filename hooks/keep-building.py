@@ -37,7 +37,7 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Сколько ходов подряд сторож удерживает стройку, которая не сдвинулась. Движение
@@ -146,6 +146,25 @@ def usage_age():
     return max(0.0, datetime.now().timestamp() - fetched / 1000)
 
 
+def window_reset(resets_at) -> bool:
+    """True, если срок сброса окна уже прошёл — значит его расход недействителен.
+
+    Время в снимке записано без пояса (`2026-09-17T03:10:00`) и означает UTC.
+    Непонятное значение — не повод считать окно сброшенным: молчаливое обнуление
+    расхода опаснее устаревшего числа, поэтому сомнение трактуется в пользу «не
+    сброшено».
+    """
+    if not isinstance(resets_at, str) or not resets_at:
+        return False
+    try:
+        moment = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
+    except Exception:
+        return False
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment <= datetime.now(timezone.utc)
+
+
 def usage_worst():
     """Самое выбранное окно лимита подписки как (имя, процент), иначе None.
 
@@ -168,6 +187,14 @@ def usage_worst():
             continue
         pct = value.get("utilization")
         if not isinstance(pct, (int, float)):
+            continue
+        if window_reset(value.get("resets_at")):
+            # Окно, чей срок сброса уже прошёл, выбрано на 0% — что бы ни стояло
+            # в снимке. Он обновляется рывками, и число живёт дольше окна:
+            # 06.09.2026 ограничитель отменил уже запущенный блок по 85%, тогда
+            # как окно сбросилось десятью минутами раньше и было пустым. Час
+            # работы ушёл на перезапуск. Сравнение с часами не стоит ни одного
+            # запроса — время сброса лежит в том же снимке.
             continue
         if worst is None or pct > worst[1]:
             worst = (name, int(pct))

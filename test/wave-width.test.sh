@@ -33,6 +33,27 @@ json.dump(data, open(os.path.join(home, ".claude.json"), "w"))
 USAGE
 }
 
+# Снимок с управляемым возрастом и временем сброса окна: ими проверяется, что
+# ограничитель смотрит не только на число (#93).
+# $1 — процент, $2 — возраст снимка в минутах, $3 — сдвиг сброса окна в минутах
+# (отрицательный = окно уже сбросилось), "none" = поля нет.
+set_usage_at() {
+  python3 - "$HOME" "$1" "$2" "$3" <<'USAGE'
+import json, os, sys, time
+from datetime import datetime, timedelta, timezone
+home, pct, age_min, reset_min = sys.argv[1], int(sys.argv[2]), float(sys.argv[3]), sys.argv[4]
+resets_at = None
+if reset_min != "none":
+    moment = datetime.now(timezone.utc) + timedelta(minutes=float(reset_min))
+    # Снимок харнесса пишет время без пояса и в UTC — воспроизводим как есть.
+    resets_at = moment.replace(tzinfo=None).isoformat()
+data = {"cachedUsageUtilization": {
+    "fetchedAtMs": int((time.time() - age_min * 60) * 1000),
+    "utilization": {"five_hour": {"utilization": pct, "resets_at": resets_at}}}}
+json.dump(data, open(os.path.join(home, ".claude.json"), "w"))
+USAGE
+}
+
 call_guard() {
   local dir="$1" tool="${2:-Agent}"
   local payload
@@ -179,6 +200,37 @@ call_guard "$solo"
 expect_warn "давно молчащая стройка окно не делит — первый агент"
 call_guard "$solo"
 expect_warn "давно молчащая стройка окно не делит — второй агент"
+
+echo
+echo "ширина волны: снимок расхода судится по возрасту, а не только по числу"
+
+# 06.09.2026 ограничитель отменил уже запущенный блок по 85%, тогда как окно
+# сбросилось десятью минутами раньше и было пустым: снимок в ~/.claude.json
+# обновляется рывками и живёт дольше окна. Час работы ушёл на перезапуск (#93).
+rm -f "$HOME/.claude/furca/builds/"*.json
+fresh="$(make_project fresh)"
+python3 "$KEEP" --start "$fresh" > /dev/null
+set_usage_at 95 0 -5     # число страшное, но срок сброса окна уже прошёл
+call_guard "$fresh"
+expect_silent "окно со сброшенным сроком читается как пустое, а не как 95%"
+
+set_usage_at 95 0 60     # то же число, но окно живое — ограничитель обязан вмешаться
+call_guard "$fresh"
+expect_warn "живое окно на 95% — предупреждение"
+
+# Протухший снимок — это «неизвестно», а не «всё хорошо»: ошибка в нём
+# однонаправленная (окно сбрасывается, число остаётся), поэтому волна сужается
+# до одного блока, и причина называется вслух.
+rm -f "$HOME/.claude/furca/builds/"*.json
+stale_p="$(make_project stale-usage)"
+python3 "$KEEP" --start "$stale_p" > /dev/null
+set_usage_at 10 90 120   # расход маленький, но снимку полтора часа
+call_guard "$stale_p"
+expect_warn "устаревший снимок: первый блок разрешён"
+if [[ "$GUARD_OUT" == *"неизвест"* ]]; then ok "в предупреждении сказано, что расход неизвестен"; else bad "устаревший снимок выдан за известный"; fi
+call_guard "$stale_p"
+expect_deny "устаревший снимок: второй блок в той же волне запрещён"
+if [[ "$GUARD_OUT" == *"мин"* ]]; then ok "в отказе назван возраст снимка"; else bad "отказ не говорит, почему расход неизвестен"; fi
 
 echo
 echo "ширина волны: собой ничего не ломает"
