@@ -425,9 +425,22 @@ python3 "$HOOK" --start "$chan" > /dev/null
 
 cat > "$WORK/chan-server.py" <<'SRV'
 import http.server, json, sys
+# Заглушка сверяет секрет, а не принимает что угодно: иначе тест не отличает
+# «секрет дошёл» от «сервер не смотрит». Заголовки приходят как latin-1, поэтому
+# сравниваем байты — ровно те, что уходят от curl (#120).
+expected = ("Bearer " + sys.argv[2]).encode("utf-8")
+# Свой id ответа на каждую заглушку: набор, за который уже удержали ход, второй
+# раз его не поднимает, и одинаковые id смешали бы этот сценарий с предыдущим.
+answer_id = int(sys.argv[3]) if len(sys.argv) > 3 else 7
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        body = json.dumps({"pending": [{"id": 7, "text": "ответ владельца"}]}).encode("utf-8")
+        got = (self.headers.get("Authorization") or "").encode("latin-1")
+        if got != expected:
+            self.send_response(401)
+            self.send_header("content-length", "0")
+            self.end_headers()
+            return
+        body = json.dumps({"pending": [{"id": answer_id, "text": "ответ владельца"}]}).encode("utf-8")
         self.send_response(200)
         self.send_header("content-type", "application/json")
         self.send_header("content-length", str(len(body)))
@@ -439,7 +452,8 @@ srv = http.server.HTTPServer(("127.0.0.1", 0), H)
 open(sys.argv[1], "w").write(str(srv.server_address[1]))
 srv.serve_forever()
 SRV
-python3 "$WORK/chan-server.py" "$WORK/chan-port" &
+chan_secret="test-secret"
+python3 "$WORK/chan-server.py" "$WORK/chan-port" "$chan_secret" &
 chan_pid=$!
 trap 'kill $chan_pid 2>/dev/null; rm -rf "$HOME" "$WORK"' EXIT
 python3 - "$WORK/chan-port" <<'WAIT'
@@ -458,7 +472,21 @@ mkdir -p "$HOME/.claude/furca"
 # не принимает не-ASCII — на кириллическом секрете запрос падает внутри, и
 # сторож по правилу «ошибка канала — молчание» ведёт себя как при пустой
 # очереди. Красный тест выглядел как дефект механизма, а был дефектом фикстуры.
-printf 'CHANNEL_URL=http://127.0.0.1:%s\nFURCA_SECRET=test-secret\n' "$chan_port" > "$HOME/.claude/furca/$CHAN_PROFILE"
+printf 'CHANNEL_URL=http://127.0.0.1:%s\nFURCA_SECRET=%s\n' "$chan_port" "$chan_secret" > "$HOME/.claude/furca/$CHAN_PROFILE"
+
+# Сбрасывает только отметку «когда последний раз ходили в канал». Без него все
+# проверки ниже упирались бы в кэш минуты и проходили бы по неверной причине:
+# сторож молчал бы не потому, что набор ответов уже поднимал удержание, а потому
+# что с прошлого обращения не прошло минуты.
+reset_channel_cache() {
+  python3 - "$(python3 "$HOOK" --marker-path "$1")" <<'RESET'
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p, encoding="utf-8"))
+d.pop("channel_checked_at", None)
+json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False)
+RESET
+}
 
 live='[{"id":"a1","type":"agent","status":"running","description":"блок api"}]'
 call_hook "$chan" "sess-1" "$live"
@@ -466,15 +494,47 @@ expect_hold "ответ в канале поднимает удержание д
 grep -q "канале" <<<"$HOOK_STDERR" || { echo "FAIL: удержание не говорит про канал; stderr: $HOOK_STDERR"; exit 1; }
 
 call_hook "$chan" "sess-1" "$live"
+expect_release "в канал не ходим чаще раза в минуту" "фоновая задача"
+
+reset_channel_cache "$chan"
+call_hook "$chan" "sess-1" "$live"
 expect_release "тот же набор ответов второй раз ход не удерживает" "фоновая задача"
 
 # Канала нет — сторож ведёт себя ровно как раньше: догадка тут вреднее молчания.
 rm -f "$HOME/.claude/furca/$CHAN_PROFILE"
 python3 "$HOOK" --start "$chan" > /dev/null
+reset_channel_cache "$chan"
 call_hook "$chan" "sess-1" "$live"
 expect_release "без настроенного канала поведение прежнее" "фоновая задача"
 
 kill $chan_pid 2>/dev/null
+
+# Секрет с не-ASCII: диспетчер ходит в канал через curl, который отправляет такой
+# секрет байтами UTF-8 и получает ответ. Сторож обязан отправлять те же байты —
+# иначе на одной и той же машине входящие забираются вручную и не забираются
+# механизмом, и выглядит это как «ответов нет» (#120).
+cyr_secret="секрет-кириллицей"
+python3 "$WORK/chan-server.py" "$WORK/chan-port-cyr" "$cyr_secret" 8 &
+cyr_pid=$!
+trap 'kill $cyr_pid 2>/dev/null; rm -rf "$HOME" "$WORK"' EXIT
+python3 - "$WORK/chan-port-cyr" <<'WAIT'
+import os, sys, time
+for _ in range(50):
+    if os.path.exists(sys.argv[1]) and open(sys.argv[1]).read().strip():
+        break
+    time.sleep(0.1)
+WAIT
+cyr_port="$(cat "$WORK/chan-port-cyr" 2>/dev/null)"
+[[ -n "$cyr_port" ]] || { echo "FAIL: заглушка канала с не-ASCII секретом не поднялась"; exit 1; }
+mkdir -p "$HOME/.claude/furca"
+printf 'CHANNEL_URL=http://127.0.0.1:%s\nFURCA_SECRET=%s\n' "$cyr_port" "$cyr_secret" > "$HOME/.claude/furca/$CHAN_PROFILE"
+python3 "$HOOK" --start "$chan" > /dev/null
+reset_channel_cache "$chan"
+call_hook "$chan" "sess-1" "$live"
+expect_hold "секрет с не-ASCII: сторож видит ответы так же, как их видит curl"
+grep -q "канале" <<<"$HOOK_STDERR" || { echo "FAIL: удержание не говорит про канал; stderr: $HOOK_STDERR"; exit 1; }
+
+kill $cyr_pid 2>/dev/null
 trap 'rm -rf "$HOME" "$WORK"' EXIT
 
 echo "PASS"

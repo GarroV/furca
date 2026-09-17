@@ -463,7 +463,14 @@ def channel_pending(project: str):
     if not url or not secret:
         return []
     query = f"{url.rstrip('/')}/inbox?project={urllib.parse.quote(project)}"
-    request = urllib.request.Request(query, headers={"Authorization": f"Bearer {secret}"})
+    # Секрет уходит в заголовок теми же байтами, что отправляет `curl`: заголовки
+    # HTTP переносятся как latin-1, а секрет с не-ASCII закодирован в UTF-8. Без
+    # этой пересборки запрос падал внутри на кодировке заголовка, и по правилу
+    # «ошибка канала — молчание» сторож вёл себя ровно как при пустой очереди,
+    # тогда как диспетчер тот же канал через `curl` читал успешно. Расхождение
+    # двух читателей одного канала неотличимо от «ответов нет» (#120).
+    authorization = f"Bearer {secret}".encode("utf-8").decode("latin-1")
+    request = urllib.request.Request(query, headers={"Authorization": authorization})
     try:
         with urllib.request.urlopen(request, timeout=CHANNEL_TIMEOUT_SEC) as response:
             data = json.loads(response.read().decode("utf-8"))
