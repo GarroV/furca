@@ -243,11 +243,17 @@ an executor's work on a different task went entirely under a commit message abou
 CSS fix. The worst case is deliberate breakage used to verify a check: committed
 and never reverted, it stops being noise and becomes a defect.
 
-**For every task, record in the block log how it was done:** `executor` or `myself`
-— plus one sentence why. This is not bureaucracy. Until 08.08.2026 delegation was
-written as permission, and across 26 block-agent launches an executor was raised
-**not once**: nobody used the permission, and there was nowhere to notice that.
-The record makes the choice visible, and acceptance checks it.
+**Every commit says who did the work** — a trailer line, `Executor: optio` or
+`Executor: self`. Nothing goes in the block file: the commit is a record you are
+making anyway, so this costs no extra move, and the summary is one command
+(`git log --format=%(trailers:key=Executor)`), which is what acceptance runs.
+
+This is not bureaucracy. Until 08.08.2026 delegation was written as permission,
+and across 26 block-agent launches an executor was raised **not once**: nobody
+used the permission, and there was nowhere to notice that. The record makes the
+choice visible. It used to live as a line per task in the block file — which is
+how those files grew to 6358 lines on a live project. The fact was worth keeping;
+its own document was not.
 
 ## Long operations: the watchdog will cut you off
 

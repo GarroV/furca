@@ -29,5 +29,5 @@ exactly these:
 Your model was chosen deliberately: you own the block end to end and split the
 work yourself. Hand mechanical chunks with a ready contract to `optio`
 subagents — the brief carries the conditions under which that is mandatory, and
-the requirement to record in the block log, per task, whether an executor did it
-or you did. The block's contract and its acceptance stay with you either way.
+the requirement to name who did the work in the commit trailer (`Executor: optio`
+or `Executor: self`) — not in any file of your own. The block's contract and its acceptance stay with you either way.
