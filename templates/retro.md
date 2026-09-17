@@ -6,10 +6,23 @@
 
 ## How to fill this in
 
-- **About the system, not the product.** Unfinished parts of the product belong in
-  its `tasks.md` and in the spec review. Here goes only what got in the way of the
-  system building: the wording of templates, the order of steps, acceptance rules,
-  notifications.
+- **About the system, not the product — with one exception, and it comes first.**
+  Unfinished parts of the product belong in its `tasks.md` and in the spec review.
+  Here goes only what got in the way of the system building: the wording of
+  templates, the order of steps, acceptance rules, notifications. The exception is
+  the opening section below: **what the product gained this run** is the measure of
+  the system, not a report on the product, and without it a retro has no scale to
+  judge anything else by.
+- **Why the exception exists.** Until 17.09.2026 this template said "about the
+  system, not the product" with no exception, and that was the only learning loop
+  the system had. Every item it produced was about process, because process was the
+  only thing it could see: failures of process are loud (a neighbour's stand torn
+  down, a lost file, a run that hung), while "the product did not move" raises no
+  event at all. Across a week of two live builds the corpus of rules grew in one
+  direction only — the build skill reached 139 mentions of runs and gates against
+  37 of the product, tests outgrew product code in both projects — and the owner,
+  not the retro, was the one who noticed. A loop that cannot see the outcome
+  optimises the ritual.
 - **From the facts of the run, not from memory.** Sources: the `progress.md` log
   (where it stalled), `questions.md` (which questions had to be asked),
   `decisions.md` (what was decided without the owner), the commit history, blocks
@@ -24,6 +37,16 @@
   "nothing". A section left silently empty reads as forgotten.
 - **Honest about yourself.** The place where the dispatcher itself blundered is
   worth more than any remark about a template: nobody else will ever see it.
+
+## What the product gained this run
+
+<!-- Fill this in FIRST, before any section below. One line per capability the user has now and did not have before the run, phrased as a user action ("an auditor finishes a check and gets a PDF"), never as task ids or module names. Sources: the spec's readiness criteria and the smokes actually run, not the task graph — a closed task is not a capability. -->
+
+1. <!-- what the user can do now / how it was shown to be true (smoke, screen, live run) -->
+
+**Runs that produced nothing here:** <!-- how many sessions of this run closed without a single wave deployed, and what each was spent on instead. A run whose entire output is tooling — checks, report formats, journals, gates — says so plainly. This is the first item of the retro, not a footnote: it is the failure mode this section exists to catch, and it is invisible in every other artefact, because each such session looks reasonable on its own. -->
+
+**Cost of the run against what it gained:** <!-- lines of product code vs lines of tests and tooling; commits by type. Both numbers come from `git log --numstat`, not from memory. A run where tests outgrew the product needs an explanation here, and the explanation belongs in the sections below as an item about the system. -->
 
 ## Where things got stuck
 
