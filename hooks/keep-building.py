@@ -37,6 +37,8 @@ import os
 import re
 import subprocess
 import sys
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -414,6 +416,91 @@ def available_work(root: Path):
     return ready
 
 
+# Сколько ждать ответа канала. Запрос идёт внутри хука, токенов не стоит и в
+# контекст не попадает — дорога тут только задержка хода, поэтому ожидание
+# короткое: канал либо рядом, либо его сегодня нет.
+CHANNEL_TIMEOUT_SEC = 2
+
+# Как часто вообще ходить в канал. Событие Stop случается на каждом ходу, а
+# ответы владельца приходят раз в часы: запрос на каждый ход — это задержка без
+# выгоды.
+CHANNEL_RECHECK_SEC = 60
+
+# Личный профиль канала: адрес и секрет. Читается только ради заголовка запроса
+# и никуда не печатается — секрет, попавший в транскрипт, пришлось бы ротировать.
+CHANNEL_PROFILE = Path(os.path.expanduser("~")) / ".claude" / "furca" / "channel.env"
+
+
+def channel_access():
+    """Адрес канала и секрет — из окружения, иначе из личного профиля."""
+    url = os.environ.get("CHANNEL_URL")
+    secret = os.environ.get("FURCA_SECRET")
+    if url and secret:
+        return url, secret
+    try:
+        text = CHANNEL_PROFILE.read_text(encoding="utf-8")
+    except Exception:
+        return url, secret
+    values = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    return url or values.get("CHANNEL_URL"), secret or values.get("FURCA_SECRET")
+
+
+def channel_pending(project: str):
+    """Id ответов владельца, которые лежат в канале неразобранными.
+
+    Любая неудача — пустой список, а не догадка: канал, о котором ничего не
+    известно, не повод мешать стройке. Ответы только читаются; пометка
+    разобранного (`ack`) остаётся за диспетчером и ставится ПОСЛЕ применения —
+    иначе обрыв между «прочитал» и «применил» съедает ответ молча.
+    """
+    url, secret = channel_access()
+    if not url or not secret:
+        return []
+    query = f"{url.rstrip('/')}/inbox?project={urllib.parse.quote(project)}"
+    request = urllib.request.Request(query, headers={"Authorization": f"Bearer {secret}"})
+    try:
+        with urllib.request.urlopen(request, timeout=CHANNEL_TIMEOUT_SEC) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return []
+    pending = data.get("pending") if isinstance(data, dict) else None
+    if not isinstance(pending, list):
+        return []
+    return [item.get("id") for item in pending
+            if isinstance(item, dict) and item.get("id") is not None]
+
+
+def unread_answers(root: Path, marker: dict, now_ts: float):
+    """Ответы владельца, ради которых стоит поднять удержание.
+
+    Ответы не приходят в сессию сами: канал лежит и ждёт, пока его спросят. Забор
+    был привязан к приёмке блока, то есть к месту, где работа и так
+    останавливается, — и пока блок идёт, спросить было некому: на прогоне
+    meridius 17.09.2026 ответ пролежал 2.5 часа (#118). В тот раз он подтверждал
+    уже сделанное; ответ, который отменяет работу, пролежал бы ровно так же.
+
+    Цена удержания — один лишний ход владельца, поэтому платим за ответ один раз:
+    набор, который уже поднимал удержание, второй раз его не поднимает.
+    """
+    last = marker.get("channel_checked_at")
+    if isinstance(last, (int, float)) and now_ts - last < CHANNEL_RECHECK_SEC:
+        return []
+    marker["channel_checked_at"] = now_ts
+    ids = channel_pending(root.name)
+    if not ids:
+        return []
+    seen = marker.get("channel_seen")
+    if isinstance(seen, list) and set(ids) <= set(seen):
+        return []
+    return ids
+
+
 def has_live_background(payload: dict) -> bool:
     tasks = payload.get("background_tasks") or []
     if not isinstance(tasks, list):
@@ -576,6 +663,23 @@ def decide(payload: dict) -> None:
             )
 
     # Живой фоновый агент разбудит сессию сам — держать её незачем и вредно.
+    unread = unread_answers(root, marker, datetime.now().timestamp())
+    if unread:
+        marker["channel_seen"] = unread
+        write_marker(path, marker)
+        hold(
+            f"В канале лежат необработанные ответы владельца: {len(unread)}. "
+            "Забери их и примени, прежде чем продолжать — ответ мог отменить "
+            "ровно то, что сейчас строится, и чем длиннее блок, тем дороже эта "
+            "задержка.\n"
+            "Забирай со своим именем проекта и помечай разобранным (`ack`) "
+            "ТОЛЬКО после применения: протокол — "
+            "`<forge_home>/templates/telegram-protocol.md`.\n"
+            "(удержание поднимается один раз на набор ответов: следующий ход "
+            "оно не отнимет)"
+        )
+    write_marker(path, marker)
+
     if has_live_background(payload):
         release("есть работающая фоновая задача — сессию разбудит её завершение")
 

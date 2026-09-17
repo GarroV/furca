@@ -10,6 +10,11 @@ shopt -s nullglob
 FURCA_HOME="$(cd "$(dirname "$0")/.." && pwd)"
 HOOK="$FURCA_HOME/hooks/keep-building.py"
 export HOME="$(mktemp -d)"
+# Канал настоящей машины в тестах не участвует: иначе сторож пойдёт в живой
+# канал владельца вместо фиктивного, и проверки будут зависеть от того, что
+# лежит в его очереди прямо сейчас.
+unset CHANNEL_URL FURCA_SECRET
+CHAN_PROFILE="channel.env"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$HOME" "$WORK"' EXIT
 
@@ -405,5 +410,71 @@ expect_hold "новое расхождение, первый ход — молч
 printf '%s\n' '2026-09-15 [dispatcher] и ещё' >> "$dirty/progress.md"
 call_hook "$dirty"
 grep -q "не закоммичено" <<<"$HOOK_STDERR" || { echo "FAIL: после коммита сторож больше не ловит расхождение; stderr: $HOOK_STDERR"; exit 1; }
+
+echo
+echo "канал: непрочитанный ответ владельца не ждёт конца блока"
+
+# Ответы владельца не приходят в сессию сами, а забор был привязан к приёмке
+# блока: на прогоне meridius 17.09.2026 ответ пролежал в канале 2.5 часа, пока
+# шёл блок (#118). Подсказка внутри удержания тут не помогает — пока блок идёт,
+# сторож ход как раз отпускает. Поэтому непрочитанный ответ поднимает удержание
+# сам, и ровно один раз на набор: лишний ход стоит денег, а система стройки не
+# должна стать дороже обычного запроса.
+chan="$(make_project channel)"
+python3 "$HOOK" --start "$chan" > /dev/null
+
+cat > "$WORK/chan-server.py" <<'SRV'
+import http.server, json, sys
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = json.dumps({"pending": [{"id": 7, "text": "ответ владельца"}]}).encode("utf-8")
+        self.send_response(200)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+    def log_message(self, *a):
+        pass
+srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+open(sys.argv[1], "w").write(str(srv.server_address[1]))
+srv.serve_forever()
+SRV
+python3 "$WORK/chan-server.py" "$WORK/chan-port" &
+chan_pid=$!
+trap 'kill $chan_pid 2>/dev/null; rm -rf "$HOME" "$WORK"' EXIT
+python3 - "$WORK/chan-port" <<'WAIT'
+import os, sys, time
+for _ in range(50):
+    if os.path.exists(sys.argv[1]) and open(sys.argv[1]).read().strip():
+        break
+    time.sleep(0.1)
+WAIT
+chan_port="$(cat "$WORK/chan-port" 2>/dev/null)"
+# Без этой проверки провал заглушки выглядел бы как дефект сторожа: он честно
+# сходил бы в никуда, получил пусто и отпустил ход.
+[[ -n "$chan_port" ]] || { echo "FAIL: заглушка канала не поднялась — порт не записан"; exit 1; }
+mkdir -p "$HOME/.claude/furca"
+# Секрет латиницей не для красоты: он уходит в заголовок Authorization, а тот
+# не принимает не-ASCII — на кириллическом секрете запрос падает внутри, и
+# сторож по правилу «ошибка канала — молчание» ведёт себя как при пустой
+# очереди. Красный тест выглядел как дефект механизма, а был дефектом фикстуры.
+printf 'CHANNEL_URL=http://127.0.0.1:%s\nFURCA_SECRET=test-secret\n' "$chan_port" > "$HOME/.claude/furca/$CHAN_PROFILE"
+
+live='[{"id":"a1","type":"agent","status":"running","description":"блок api"}]'
+call_hook "$chan" "sess-1" "$live"
+expect_hold "ответ в канале поднимает удержание даже при живом блоке"
+grep -q "канале" <<<"$HOOK_STDERR" || { echo "FAIL: удержание не говорит про канал; stderr: $HOOK_STDERR"; exit 1; }
+
+call_hook "$chan" "sess-1" "$live"
+expect_release "тот же набор ответов второй раз ход не удерживает" "фоновая задача"
+
+# Канала нет — сторож ведёт себя ровно как раньше: догадка тут вреднее молчания.
+rm -f "$HOME/.claude/furca/$CHAN_PROFILE"
+python3 "$HOOK" --start "$chan" > /dev/null
+call_hook "$chan" "sess-1" "$live"
+expect_release "без настроенного канала поведение прежнее" "фоновая задача"
+
+kill $chan_pid 2>/dev/null
+trap 'rm -rf "$HOME" "$WORK"' EXIT
 
 echo "PASS"

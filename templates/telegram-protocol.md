@@ -104,11 +104,21 @@ Hence three requirements:
   ```
 
   "On demand" means the skill itself must create the demand: the channel wakes
-  nobody and never reminds anyone of itself. That is why fetching is tied to the
-  places where work stops anyway — accepting a block and returning to the state
-  files (`fabrica`, step 4). Without that tie the inbox is never fetched: no
-  occasion arises. Verified on the run of 13.08.2026 — an answer from the owner lay
-  in the channel for five days with a healthy channel and a running build.
+  nobody and never reminds anyone of itself. That is why fetching is tied to every
+  point where a dispatcher task ends — accepting a block, writing the log, going
+  back to the state files (`fabrica`, step 4). Without that tie the inbox is never
+  fetched: no occasion arises. Verified on the run of 13.08.2026 — an answer from
+  the owner lay in the channel for five days with a healthy channel and a running
+  build.
+
+  **The continuity guard is the safety net.** Tying the fetch only to block
+  acceptance was not enough: while a block runs, acceptance never happens, and on
+  the run of 17.09.2026 an answer sat in the channel for 2.5 hours (#118). So the
+  guard (`hooks/keep-building.py`) asks the channel itself and holds the turn while
+  answers are unprocessed — once per set of answers, at most once a minute. The
+  request happens inside the hook: it costs no tokens and never enters the context.
+  A hold does cost the owner one extra turn, so it is a backstop, not a substitute
+  for fetching at the points above.
 - **If the channel does not answer — say so immediately, not silently.** The
   liveness check is `GET $CHANNEL_URL/healthz` without the secret; it returns `503`
   if the Telegram polling has been knocked out or the database is not answering, and
