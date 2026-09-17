@@ -57,8 +57,24 @@ the main copy.
 ## Who owns what
 
 - You edit: **your block's code** and **`docs/furca/blocks/{{block name}}.md`**.
-- Keep a short work log and the "Status" field in the block file **as you go**, not
-  at the end: if your session dies, that is the only trace left.
+- Keep **state** — not a chronicle — in the block file **as you go**, not at the
+  end: if your session dies, that is the only trace left. State answers four
+  questions: where you stand, what is next, what has been verified and how, what
+  is still open. A fresh entry **replaces** the previous one instead of being
+  appended below it. The chronicle lives in `git log`, which keeps it more
+  precisely and for free — retelling it in prose is forbidden. Measured on a live
+  project: six block files grew to 6358 lines, three times the whole product's
+  documentation, and every resume after a limit cutoff started by reading them in
+  full. **Ceiling: 120 lines.** Hit it and you cut the chronicle, not start a
+  second file.
+- **Before handing over, run the affected tests, the tests of your block's direct
+  consumers, and the project's fast core check** — not the whole suite. The full
+  suite is run once by the dispatcher when the wave closes. Measured: across a
+  week of parallel building the full suite on every block acceptance caught
+  nothing that was not visible more cheaply, and cost minutes on each of a dozen
+  blocks. **A run that skips tests is a failed run**, not a green one: report the
+  number of tests actually executed, and if something was skipped because the
+  environment was missing, say so instead of reporting green.
 - **You update `CHANGELOG.md`** — an entry about what appeared: **by meaning, with
   no task ids**, in the tone of the neighbouring entries. "T011: move the rules" is
   useless to a reader. This is part of the block being done, not a separate later
