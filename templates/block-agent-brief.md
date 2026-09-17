@@ -90,7 +90,19 @@ the main copy.
 
 ## How to work
 
-- **Tests are written before the code** (red → green → refactor).
+- **What the block is for, in one sentence, before anything else.** What can a
+  user do once your block is done that they could not do before — as a user
+  action ("an auditor finishes a check and gets a PDF"), not as task ids or module
+  names. You will be accepted against that sentence first, and the checks second.
+  If you cannot write it, your tasks are tooling, not product: say so in the
+  handover — that is a fact the dispatcher needs, not a failing of yours.
+- **Tests go where a mistake is expensive, and there they come before the code**
+  (red → green → refactor): calculations, money, access rights, anything a partner
+  or a customer reads as fact. Which modules those are is named in
+  `docs/furca/constitution.md`. **Everything else you verify by running it** — open
+  the page, send the command, call the endpoint. A test that cannot catch an error
+  is not written; one you find is deleted. The number of tests is not a result and
+  does not open your report: the first line of the report is the sentence above.
 - **Investigate before you fix.** A test failed — first understand why. Nudging the
   code until the test passes is forbidden.
 - **Verify by running things.** "It should work, judging by the code" is not a
