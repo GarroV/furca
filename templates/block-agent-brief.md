@@ -319,12 +319,23 @@ most here: a real person will see that page.
 
 ## Clean up after yourself
 
-- **Stop a server you started and check the port**, not the exit code of the stop
-  command: take the listener (`lsof -nP -iTCP:<port from your range> -sTCP:LISTEN -t`),
-  kill it and **check the port again**. Remove containers under your own project
-  name: `docker compose -p {{compose project name}} down -v`. A blanket `pkill` will
-  not match the command line if it carries flags, and stopping a shell job kills
-  `npm` but not the process it spawned.
+- **Containers come down first, through compose and under your own project name:**
+  `docker compose -p {{compose project name}} down -v`. That releases the database
+  port and the volume together, and it is the only way the stand's ports are freed.
+- **Only then deal with a server you started yourself** — and only on application
+  ports: take the listener (`lsof -nP -iTCP:<port from your range> -sTCP:LISTEN -t`),
+  kill it and **check the port again**, not the exit code of the stop command. A
+  blanket `pkill` will not match the command line if it carries flags, and stopping
+  a shell job kills `npm` but not the process it spawned.
+- **Never kill the listener on a stand's database port, and never one you did not
+  start.** On a container port the listener is not the database — it is the Docker
+  proxy (`com.docker.backend`, `docker-proxy`), and killing it takes down the daemon
+  with **every container on the machine**. Measured on a live run (17.09.2026): a
+  block cleaning up its stand killed the listener on its database port and stopped
+  the stands of two neighbouring projects that had nothing to do with the build;
+  seven minutes of downtime, and the block found out only when its own stand would
+  not come back up. Check before you kill: `ps` on the pid you got: if you did not
+  start that process, it is the machine's infrastructure and not your leftover.
 - **Delete the data your smoke created** from the shared database; bring demo data
   back to its reference state with the seed. The next agent and acceptance must see
   a clean state, not your leftovers.
@@ -340,6 +351,13 @@ most here: a real person will see that page.
 - **Nothing irreversible:** do not delete data, do not create paid resources, do not
   publish anything outward, do not touch production systems.
 - Secrets live only in `.env`; documents carry variable names, not values.
+- **The `.env` in your copy carries placeholders, not live secrets** — that is
+  deliberate, not a broken setup. A live token would ride into every copy of the
+  wave and from there into each agent's session log (twelve copies in one day on a
+  live run), where it outlives the task and nobody looks for it. Need a real call to
+  a model or to Telegram? **Ask the dispatcher for that one secret** instead of
+  taking it from the main copy — and say in the report that you worked with a live
+  secret, so it can be rotated if it ends up somewhere it should not.
 
 ## Report
 
