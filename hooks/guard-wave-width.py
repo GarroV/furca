@@ -26,6 +26,7 @@ limit» — каждый в шаге от сдачи, ни один не усп�
 import importlib.util
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime
@@ -180,6 +181,55 @@ def inform(context: str) -> None:
     }, ensure_ascii=False))
 
 
+# В графе задач служебные дела помечены блоком `chores`: оснастка, форматы
+# отчётов, журналы, переезды на новые правила системы. Правило «задачи с блоком
+# chores агенту не отдаются» стоит в скилле стройки текстом — и текстом же было
+# нарушено 17.09.2026: волна ушла на планку числа тестов, пока пять продуктовых
+# задач стояли, а владелец обнаружил это сам и спросил, где работа. Отсюда
+# проверка: не новое ограничение, а уже принятое правило, ставшее проверяемым.
+CHORES_BLOCK = "chores"
+TASK_ID = re.compile(r"\bT\d{3,}\b")
+# Строка графа: | T012 | core | — | todo | ... |
+TASK_ROW = re.compile(r"^\|\s*(T\d{3,})\s*\|\s*([^|]+?)\s*\|", re.M)
+
+
+def brief_task_ids(payload: dict):
+    """Идентификаторы задач, названные в брифе запускаемого агента."""
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_input, dict):
+        return []
+    prompt = tool_input.get("prompt")
+    if not isinstance(prompt, str):
+        return []
+    seen, ids = set(), []
+    for tid in TASK_ID.findall(prompt):
+        if tid not in seen:
+            seen.add(tid)
+            ids.append(tid)
+    return ids
+
+
+def all_tasks_are_chores(payload: dict, root) -> bool:
+    """Правда, когда все узнанные задачи брифа — служебные.
+
+    Скупость здесь та же, что у всего ограничителя: не нашли в брифе ни одного
+    идентификатора, не нашли граф, не нашли в графе ни одной из названных задач —
+    значит неизвестно, а неизвестное не запрещается.
+    """
+    ids = brief_task_ids(payload)
+    if not ids:
+        return False
+    try:
+        text = (Path(root) / "tasks.md").read_text(encoding="utf-8")
+    except Exception:
+        return False
+    blocks = {tid: block for tid, block in TASK_ROW.findall(text)}
+    known = [blocks[tid] for tid in ids if tid in blocks]
+    if not known:
+        return False
+    return all(block.strip() == CHORES_BLOCK for block in known)
+
+
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
@@ -198,6 +248,19 @@ def main() -> int:
     except Exception:
         return 0
     if not marker:
+        return 0
+
+    # Проверка стоит ДО разговора о лимите: служебная волна не становится
+    # уместной оттого, что окно подписки пустое. Пока система работает, проект
+    # строится — оснастка едет вместе с продуктовой задачей, а не вместо неё.
+    if all_tasks_are_chores(payload, root):
+        deny("Все задачи этого запуска — служебные (блок `chores` в tasks.md). "
+             "Такие задачи блок-агенту не отдаются: их делает диспетчер, и они "
+             "не бывают содержанием волны. Возьми в волну продуктовую задачу — "
+             "тогда служебные едут вместе с ней; либо сделай их сам, если это "
+             "мелочь по дороге; либо вынеси владельцу списком, если это заход "
+             "работы. Правило и причина — в скилле стройки, раздел «Ради чего "
+             "всё это».")
         return 0
 
     worst = None

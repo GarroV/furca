@@ -285,5 +285,51 @@ set -e
 call_guard "$b" "Bash"
 expect_silent "не запуск агента — ограничитель молчит"
 
+set +e
+
+# Служебная волна. Правило «задачи с блоком chores агенту не отдаются» стояло
+# текстом и всё равно нарушалось: на живом прогоне 17.09.2026 волна из одного
+# блока ушла на задачи оснастки, пока пять продуктовых задач стояли, и владелец
+# спросил, где работа. Текст правилом остаётся, а проверяемым его делает это.
+echo "ширина волны: блок-агент не запускается на одних служебных задачах"
+
+call_guard_tasks() {
+  local dir="$1" prompt="$2" role="${3:-artifex}"
+  local payload
+  payload="$(python3 -c "
+import json,sys
+tool_input = {'prompt': sys.argv[2]}
+if sys.argv[3] != 'none':
+    tool_input['subagent_type'] = sys.argv[3]
+print(json.dumps({'session_id':'s1','cwd':sys.argv[1],'hook_event_name':'PreToolUse',
+                  'tool_name':'Agent','tool_input':tool_input}))" "$dir" "$prompt" "$role")"
+  GUARD_OUT="$(printf '%s' "$payload" | python3 "$GUARD" 2>/dev/null)"
+}
+
+c="$(make_project chores)"
+python3 "$KEEP" --start "$c" > /dev/null
+printf '| id | блок | зависит от | статус | задача |\n|---|---|---|---|---|\n| T010 | chores | — | todo | Планка числа тестов |\n| T011 | chores | — | todo | Срезать журналы блоков |\n| T012 | core | — | todo | Экран заполнения |\n' > "$c/tasks.md"
+
+set_usage 10
+reset_wave
+call_guard_tasks "$c" "твои задачи: T010, T011"
+expect_deny "все задачи блока служебные — запуск отклонён даже при пустом лимите"
+
+reset_wave
+call_guard_tasks "$c" "твои задачи: T010, T012"
+expect_silent "есть продуктовая задача — волна разрешена"
+
+reset_wave
+call_guard_tasks "$c" "бриф без списка задач"
+expect_silent "id задач в брифе нет — ограничитель не выдумывает"
+
+reset_wave
+call_guard_tasks "$c" "твои задачи: T777, T888"
+expect_silent "задач нет в графе — не знаем, значит не запрещаем"
+
+reset_wave
+call_guard_tasks "$c" "твои задачи: T010, T011" "optio"
+expect_silent "короткая роль на служебной задаче — это не волна"
+
 echo
 if (( failed == 0 )); then echo "PASS ($passed)"; else echo "ПРОВАЛЕНО: $failed, прошло: $passed"; exit 1; fi
