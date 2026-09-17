@@ -336,6 +336,14 @@ most here: a real person will see that page.
   seven minutes of downtime, and the block found out only when its own stand would
   not come back up. Check before you kill: `ps` on the pid you got: if you did not
   start that process, it is the machine's infrastructure and not your leftover.
+- **Before you hand the block over, prove the copy is idle:**
+  `lsof -a -d cwd +D <your copy> -t` must come back empty. A dev server started
+  through `npm exec` detaches from its parent, so it survives both the shell job
+  and the directory itself. Measured 11.09.2026: a `next-server` still held its
+  port an hour after its block had been accepted and merged, with its `cwd`
+  pointing at a directory that no longer existed on disk. Nothing surfaces such a
+  process — not `git worktree list`, not `docker ps`, and its CPU is zero; it is
+  found only by looking at what the copy still holds.
 - **Delete the data your smoke created** from the shared database; bring demo data
   back to its reference state with the seed. The next agent and acceptance must see
   a clean state, not your leftovers.

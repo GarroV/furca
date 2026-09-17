@@ -337,7 +337,8 @@ declare -a BRIEF_RULES=(
   'scratch directory}}'                  # каталог-черновик свой на блок: общий затирают одинаковые имена
   'defect in how your copy was prepared'  # объявленная команда не стартует — дефект подготовки копии, не повод собирать свою
   'never one you did not'                 # kill по слушателю порта базы кладёт демон Docker со всеми контейнерами машины
-  'carries placeholders, not live secrets' # боевой секрет не уезжает в копии блоков и в журналы агентов
+  'carries placeholders, not live secrets'
+  'prove the copy is idle' # боевой секрет не уезжает в копии блоков и в журналы агентов
   'schema history has two'               # разведённые номера миграций не спасают граф схемы
 )
 for rule in "${BRIEF_RULES[@]}"; do

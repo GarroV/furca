@@ -5,6 +5,7 @@ language: en              # язык разговора и документов 
 test_platform: local      # или ssh-хост тестовой площадки (напр. my-server)
 telegram: "off"           # "on" после развёртывания канала (channel/README.md);
                           # адрес и секрет — в ~/.claude/furca/channel.env, не здесь
+# worktrees_root: ~/worktrees   # где селить копии блоков; без ключа — рядом с репозиторием
 # session_model_recommended: fable   # какую модель системе советовать для главной сессии
 # agent_models:           # аварийное переопределение моделей субагентов
 #   block_agent: sonnet   # (по умолчанию берутся из agents/*.md)
