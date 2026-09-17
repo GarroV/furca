@@ -55,13 +55,16 @@ USAGE
 }
 
 call_guard() {
-  local dir="$1" tool="${2:-Agent}"
+  local dir="$1" tool="${2:-Agent}" role="${3:-artifex}"
   local payload
   payload="$(python3 -c "
 import json,sys
+tool_input = {'prompt':'бриф'}
+if sys.argv[3] != 'none':
+    tool_input['subagent_type'] = sys.argv[3]
 print(json.dumps({'session_id':'s1','cwd':sys.argv[1],'hook_event_name':'PreToolUse',
                   'tool_name':sys.argv[2],
-                  'tool_input':{'subagent_type':'artifex','prompt':'бриф'}}))" "$dir" "$tool")"
+                  'tool_input':tool_input}))" "$dir" "$tool" "$role")"
   GUARD_OUT="$(printf '%s' "$payload" | python3 "$GUARD" 2>/dev/null)"
   GUARD_CODE=$?
 }
@@ -218,9 +221,12 @@ set_usage_at 95 0 60     # то же число, но окно живое — о
 call_guard "$fresh"
 expect_warn "живое окно на 95% — предупреждение"
 
-# Протухший снимок — это «неизвестно», а не «всё хорошо»: ошибка в нём
-# однонаправленная (окно сбрасывается, число остаётся), поэтому волна сужается
-# до одного блока, и причина называется вслух.
+# Протухший снимок — это «неизвестно», а не «всё хорошо»: причина называется
+# вслух. Но незнание не должно наказываться строже известного расхода: ошибка в
+# протухшем снимке однонаправленная — он почти всегда показывает БОЛЬШЕ
+# фактического, — поэтому ширина считается по числу из него, а не падает до
+# одного блока. Раньше падала: на прогоне meridius 17.09.2026 так отклонялись
+# короткие роли при запасе окна (#119).
 rm -f "$HOME/.claude/furca/builds/"*.json
 stale_p="$(make_project stale-usage)"
 python3 "$KEEP" --start "$stale_p" > /dev/null
@@ -229,8 +235,46 @@ call_guard "$stale_p"
 expect_warn "устаревший снимок: первый блок разрешён"
 if [[ "$GUARD_OUT" == *"неизвест"* ]]; then ok "в предупреждении сказано, что расход неизвестен"; else bad "устаревший снимок выдан за известный"; fi
 call_guard "$stale_p"
-expect_deny "устаревший снимок: второй блок в той же волне запрещён"
+expect_warn "устаревший снимок с малым расходом: второй блок не душится"
+
+# Устаревший снимок с большим числом — ширина по нему, то есть один блок.
+set_usage_at 88 90 120
+reset_wave
+call_guard "$stale_p"
+expect_warn "устаревший снимок на 88%: первый блок разрешён"
+call_guard "$stale_p"
+expect_deny "устаревший снимок на 88%: второй блок в той же волне запрещён"
 if [[ "$GUARD_OUT" == *"мин"* ]]; then ok "в отказе назван возраст снимка"; else bad "отказ не говорит, почему расход неизвестен"; fi
+
+echo
+echo "ширина волны: меряется работа блоков, а не любой субагент"
+
+# Роли несопоставимы по нагрузке: artifex — часы работы и свой стенд, optio —
+# одна механическая задача, norma — сверка одного экрана. Считать их одним
+# счётчиком значит делать сверку экрана недостижимой: картинки разрешены только
+# norma, а запустить её нельзя, пока идёт блок. На meridius 17.09.2026 это
+# оставило шесть задач сверки незакрытыми при готовых снимках (#119).
+rm -f "$HOME/.claude/furca/builds/"*.json
+roles_p="$(make_project roles)"
+python3 "$KEEP" --start "$roles_p" > /dev/null
+set_usage 88
+reset_wave
+call_guard "$roles_p"
+expect_warn "блок-агент на исходе окна — первый разрешён"
+call_guard "$roles_p"
+expect_deny "второй блок-агент на исходе окна — по-прежнему запрещён"
+call_guard "$roles_p" Agent norma
+expect_silent "сверка экрана волной не считается — norma проходит при полной волне"
+call_guard "$roles_p" Agent optio
+expect_silent "исполнитель внутри блока волной не считается — optio проходит"
+call_guard "$roles_p" Agent exploratio
+expect_silent "исследователь волной не считается"
+call_guard "$roles_p"
+expect_deny "короткие роли счёт волны не сдвинули — блок-агент всё ещё запрещён"
+call_guard "$roles_p" Agent none
+expect_deny "роль не названа — считается блоком, как раньше"
+call_guard "$roles_p" Agent general-purpose
+expect_deny "незнакомая роль считается блоком: ограничитель сужается только по известным"
 
 echo
 echo "ширина волны: собой ничего не ломает"
