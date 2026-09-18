@@ -405,6 +405,17 @@ most here: a real person will see that page.
 
 **Keep it short.** What is closed, the actual output of tests and smoke, what was
 cleaned up, what did not work out and why, which decisions you made yourself.
+
+**Anything red opens the report, and "not from my files" is a diagnosis, not
+permission.** A failing check goes first, with the test names — including one in
+files you never touched. You do not hand over on top of a red suite: run it on a
+clean clone of `main`; red there too — say so, it is a blocker the dispatcher
+fixes before anything merges; green there — your block broke it. The number of
+passed tests never opens a report: it says how much ran, not what was checked,
+and next to a red line it reads as "all good". Measured: a session wrote "my files
+are clean, the other 2933 tests passed" over a red leak check and committed; the
+gate sat red on `main` until the owner asked why there were so many tests
+(GarroV/furca#139).
 **A mandatory item — live executors:** whom you launched, what they are doing, and
 whether you waited for them. One line. The dispatcher knows nothing about your
 subagents, and after you hand over it starts editing the block's files — and once
