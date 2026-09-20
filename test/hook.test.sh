@@ -370,6 +370,56 @@ call_hook "$stale"
 expect_hold "свежий снимок 99% — ход удержан ради сохранения"
 grep -q "израсходовано" <<<"$HOOK_STDERR" || { echo "FAIL: свежий снимок за порогом не остановил стройку; stderr: $HOOK_STDERR"; exit 1; }
 
+# Возраст снимка перестаёт быть приговором там, где время сброса окна известно и
+# ещё не наступило: внутри окна расход идёт только вверх, поэтому устаревшее
+# число занижает его, а не завышает. Выбрасывать такое показание значило снимать
+# останов ровно там, где ему можно верить — с 15.09 по 20.09.2026 стройки на этом
+# доходили до отказа API вместо остановки (#151).
+# $1 — процент, $2 — возраст снимка в минутах, $3 — сдвиг сброса окна в минутах
+# (отрицательный = окно уже сбросилось), "none" = поля нет.
+set_usage_full() {
+  python3 - "$HOME" "$1" "$2" "$3" <<'USAGE'
+import json, os, sys, time
+from datetime import datetime, timedelta, timezone
+home, pct, age_min, reset_min = sys.argv[1], int(sys.argv[2]), float(sys.argv[3]), sys.argv[4]
+resets_at = None
+if reset_min != "none":
+    moment = datetime.now(timezone.utc) + timedelta(minutes=float(reset_min))
+    # Снимок харнесса пишет время без пояса и в UTC — воспроизводим как есть.
+    resets_at = moment.replace(tzinfo=None).isoformat()
+data = {"cachedUsageUtilization": {
+    "fetchedAtMs": int((time.time() - age_min * 60) * 1000),
+    "utilization": {"seven_day": {"utilization": pct, "resets_at": resets_at}}}}
+json.dump(data, open(os.path.join(home, ".claude.json"), "w"))
+USAGE
+}
+
+live="$(make_project live '| T001 | api | — | todo | Работа |')"
+python3 "$HOOK" --start "$live" > /dev/null
+set_usage_full 96 1200 4300
+call_hook "$live"
+expect_hold "снимок двадцатичасовой давности, но окно ещё не сбрасывалось — останов обязателен"
+grep -q "израсходовано" <<<"$HOOK_STDERR" || { echo "FAIL: стройка продолжена при 96% живого окна — останова нет; stderr: $HOOK_STDERR"; exit 1; }
+grep -q "снимку" <<<"$HOOK_STDERR" || { echo "FAIL: в удержании не назван возраст снимка, по которому принят останов; stderr: $HOOK_STDERR"; exit 1; }
+
+# То же число в окне, которое уже сбросилось, останова не даёт: его расход
+# недействителен, что бы ни стояло в снимке.
+past="$(make_project past '| T001 | api | — | todo | Работа |')"
+python3 "$HOOK" --start "$past" > /dev/null
+set_usage_full 96 1200 -10
+call_hook "$past"
+expect_hold "окно сброшено — стройка продолжается"
+grep -q "израсходовано" <<<"$HOOK_STDERR" && { echo "FAIL: стройка остановлена по расходу уже сброшенного окна; stderr: $HOOK_STDERR"; exit 1; }
+
+# Окно без времени сброса остаётся неизвестностью: судить о нём по протухшему
+# числу нечем, и останавливать стройку по догадке сторож не обязан.
+blind="$(make_project blind '| T001 | api | — | todo | Работа |')"
+python3 "$HOOK" --start "$blind" > /dev/null
+set_usage_full 96 1200 none
+call_hook "$blind"
+expect_hold "нет времени сброса — протухшее число останова не даёт"
+grep -q "израсходовано" <<<"$HOOK_STDERR" && { echo "FAIL: останов принят по числу, которое нечем проверить; stderr: $HOOK_STDERR"; exit 1; }
+
 # 15. Состояние стройки не закоммичено. Единственная точка сохранения раньше
 # стояла на пороге лимита — то есть ровно там, где у сессии меньше всего шансов
 # её исполнить. 15.09.2026 в promus так едва не потерялись три решения владельца:
