@@ -107,8 +107,14 @@ the main copy.
   code until the test passes is forbidden.
 - **Verify by running things.** "It should work, judging by the code" is not a
   result; the report carries the actual output of commands.
-- **Commit after every closed task.** Environments fall over: one big commit at the
-  end is lost work.
+- **Commit AND push after every closed task.** The wave runs until the limit refuses
+  a turn — there is no warning and no graceful stop (owner's decision 25.09.2026),
+  so the refusal lands in the middle of an action. What is in `origin` survives it;
+  what is only in the copy on disk does not, and a copy of a block is removed at
+  acceptance. Measured 20.09.2026: two block agents died within one minute, and the
+  one that had been pushing per task cost zero work, while the other's copy had to
+  be rescued by hand. Push to your own branch — first push with
+  `git push -u origin <branch>`.
 - **Only one block changes the data schema in a wave.** Whether that is your block
   is stated in this assignment; if it is not stated, ask the dispatcher instead of
   writing a migration on a guess. Spread-out file numbers do not save you: if two
