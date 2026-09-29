@@ -335,6 +335,11 @@ declare -a BRIEF_RULES=(
   'port range}}'                         # у стенда портов несколько, одного назначенного мало
   'compose project name}}'               # без своего имени up перехватывает контейнеры соседа
   'scratch directory}}'                  # каталог-черновик свой на блок: общий затирают одинаковые имена
+  'stand host}}'                         # бриф называет площадку стенда: без неё блок поднимает стенд здесь
+  'stand directory}}'                    # каталог копии на площадке свой на блок, как и имя compose-проекта
+  'Code gets there through git'          # стенд на площадке гоняет запушенное, а не то, что на диске
+  'Only ports come to this machine'      # сюда — только проброс портов, стенд здесь не встаёт даже на один прогон
+  '-O exit {{stand host}}'               # проброс закрывается через сокет, а не kill по порту
   'defect in how your copy was prepared'  # объявленная команда не стартует — дефект подготовки копии, не повод собирать свою
   'never one you did not'                 # kill по слушателю порта базы кладёт демон Docker со всеми контейнерами машины
   'carries placeholders, not live secrets'
@@ -342,7 +347,7 @@ declare -a BRIEF_RULES=(
   'schema history has two'               # разведённые номера миграций не спасают граф схемы
 )
 for rule in "${BRIEF_RULES[@]}"; do
-  grep -qF "$rule" "$BRIEF" || {
+  grep -qF -- "$rule" "$BRIEF" || {
     echo "FAIL: block-agent-brief.md — потеряно правило, добытое обкаткой: ${rule}"
     exit 1
   }

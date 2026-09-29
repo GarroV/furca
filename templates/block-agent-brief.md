@@ -40,6 +40,38 @@ the main copy.
 - **`down -v` only for your own project.** Verified on a live run: cleaning up
   someone else's stand destroyed the database of a block that was mid-smoke, and
   from its side it looked like "the data disappeared by itself".
+- **Your stand comes up on: {{stand host}}.**
+  <!-- The dispatcher substitutes `stand_host` from the settings. Empty setting: write "this machine" and delete the subsection "When the stand host is another machine" below — the stand then comes up here, as before. A host name: keep the subsection and substitute {{stand directory}} too. -->
+
+### When the stand host is another machine
+
+The stand does not come up on this machine at all — not the database, not the
+application for the smoke, not a throwaway database for a single test run. Here
+the owner's guard may refuse `docker compose up`, `docker run` and `supabase start`
+outright; that refusal is the rule working, not an obstacle to route around, and
+there is no "just for one run" exception. Bought 29.09.2026: a wave of three blocks
+brought their stands up on the owner's working machine, where stands are
+forbidden, and swap reached 15.4 of 16 GB; the brief had said nothing about where
+the stand lives, and each block did the obvious thing.
+
+- **Code gets there through git.** Your branch is already pushed after every
+  closed task (below). On the host your checkout is `{{stand directory}}`: the
+  first time `ssh {{stand host}} "git clone -b {{branch name}} <origin url>
+  {{stand directory}}"`, after every push
+  `ssh {{stand host}} "git -C {{stand directory}} pull --ff-only"`. The stand runs
+  what is pushed, not what is on your disk — an unpushed fix is not on the stand.
+- **Files outside git** (the stand's `.env`) go there with `scp` separately and
+  never into a commit.
+- **Everything that starts containers goes through ssh**, with the same compose
+  project name and ports from your range:
+  `ssh {{stand host}} "cd {{stand directory}} && docker compose -p {{compose project name}} up -d"`.
+  Not `DOCKER_HOST=ssh://…` from here: the daemon would resolve the compose file's
+  bind mounts against the host's disk, where your working copy does not exist.
+- **Only ports come to this machine** — a forward, one `-L` per port you actually
+  use: `ssh -f -N -M -S {{scratch directory}}/tunnel.sock -L <port>:localhost:<port> {{stand host}}`.
+  Tests, migrations, the smoke and the browser check run here against
+  `localhost:<port>`, through that forward. The control socket is how you close it
+  later without hunting for the pid.
 
 ## Read before you start (actually, not from memory)
 
@@ -362,6 +394,14 @@ most here: a real person will see that page.
 - **Containers come down first, through compose and under your own project name:**
   `docker compose -p {{compose project name}} down -v`. That releases the database
   port and the volume together, and it is the only way the stand's ports are freed.
+- **The stand is on another host — take it down there, then close the forward.**
+  `ssh {{stand host}} "docker compose -p {{compose project name}} down -v"`, then
+  `ssh -S {{scratch directory}}/tunnel.sock -O exit {{stand host}}`. Proof, not
+  intent: `ssh {{stand host}} "docker compose ls -a --filter name={{compose project name}}"`
+  shows only the header, and every port of your range is free here. The listener
+  on a forwarded port here is your own `ssh`, not Docker's proxy — close it through
+  the socket rather than by `kill`. Leave the checkout `{{stand directory}}` on
+  the host: the dispatcher removes it at acceptance.
 - **Only then deal with a server you started yourself** — and only on application
   ports: take the listener (`lsof -nP -iTCP:<port from your range> -sTCP:LISTEN -t`),
   kill it and **check the port again**, not the exit code of the stop command. A
