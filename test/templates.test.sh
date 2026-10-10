@@ -98,8 +98,11 @@ grep -qF 'coverage no lower than at the previous acceptance' "$TEMPLATES_DIR/blo
   exit 1
 }
 
+# Complexity — по пометке диспетчер выбирает модель блок-агента: standard идёт на
+# Sonnet, hard — на Opus. Без раздела ordo нечего заполнять, диспетчеру нечего
+# читать, и каждый блок молча едет на дешёвой модели, включая ядро с деньгами.
 check_template block.md \
-  "Purpose" "API contract" "Dependencies" "Definition of Done for the block" "Status"
+  "Purpose" "API contract" "Dependencies" "Complexity" "Definition of Done for the block" "Status"
 
 # Этап у пункта готовности. Контракт пишется на блок целиком, а строится он
 # очередями: без пометки агент получает список, где часть пунктов относится к

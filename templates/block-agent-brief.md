@@ -171,8 +171,11 @@ the stand lives, and each block did the obvious thing.
 
 **Your context is the single largest cost of the build.** Measured on one real
 build: block agents read 644 million tokens from cache out of 838 million spent
-on opus across the whole build — more than the dispatcher and every other role
-together. The reason is not the number of agents but the shape of the
+across the whole build, all of it on opus — more than the dispatcher and every
+other role together. Block agents now run on Sonnet by default (opus only for
+`Complexity: hard` blocks and for a block returned twice from acceptance), which
+removes about a fifth of the cost; cache reads cost the same on both, so the shape
+below still matters as much as the model. The reason is not the number of agents but the shape of the
 cost: everything you read stays until you finish, and is re-read on **every**
 following turn. A 20-thousand-token file pulled in on turn 50 of 400 is not 20
 thousand tokens, it is seven million.
@@ -214,6 +217,13 @@ one) when **all four** conditions hold:
 Any one condition missing — you do it yourself; that is a normal outcome, not a
 violation. The block's contract and its acceptance stay with you either way: the
 executor takes work, not responsibility.
+
+**Reading a lot to get a short answer** is a different kind of handoff: a sweep
+across the repository, a long run or CI log, a state file cross-check. Give it to a
+`lector` subagent (`subagent_type: lector`; the role carries its own model, haiku,
+you do not pass one). It reads, writes nothing, and returns a short text with paths
+and line numbers, so the reading does not stay in your context for the rest of the
+block.
 
 ### Shared copy or its own
 

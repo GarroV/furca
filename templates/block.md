@@ -14,6 +14,10 @@
 
 <!-- Which other product blocks this one depends on (names from the graph in plan.md) and which external services or libraries it needs (with versions, if known). "—" if there are none. -->
 
+## Complexity
+
+<!-- `standard` or `hard`, plus one line of rationale. `hard` if the block touches: the product core (calculations, money, access rights, data that people read as fact); concurrency, shared state or data migrations; an integration with an external API that has no reliable contract; or a non-trivial architecture that the brief cannot describe to the end. Otherwise `standard`. Why it is asked at all: the dispatcher runs `standard` blocks on Sonnet, which is cheaper, and `hard` ones on opus, because a mistake in the core is silent and expensive. When in doubt, write `hard`. -->
+
 ## Definition of Done for the block
 
 <!-- A checkable list for THIS block: tests green WITH the number actually executed named (a run that silently skips is not green — on a live project the gate stayed green through 339 unexecuted checks), coverage no lower than at the previous acceptance, the project's static checks green, the block's flow smoke-tested for real, the block's documentation updated and the CHANGELOG appended, integration with dependent blocks not broken.
