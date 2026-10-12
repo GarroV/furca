@@ -16,7 +16,7 @@
 
 ## Complexity
 
-<!-- `standard` or `hard`, plus one line of rationale. `hard` if the block touches: the product core (calculations, money, access rights, data that people read as fact); concurrency, shared state or data migrations; an integration with an external API that has no reliable contract; or a non-trivial architecture that the brief cannot describe to the end. Otherwise `standard`. Why it is asked at all: the dispatcher runs `standard` blocks on Sonnet, which is cheaper, and `hard` ones on opus, because a mistake in the core is silent and expensive. When in doubt, write `hard`. -->
+<!-- `standard` or `hard`, plus one line of rationale. `hard` only if the block touches the product core (calculations, money, access rights, data that people read as fact) or security (authentication, secrets, personal data). Otherwise `standard`, including migrations, concurrency, external APIs and architecture. Why it is asked at all: the dispatcher runs `standard` blocks on Sonnet, which is cheaper, and `hard` ones on opus, because a mistake in the core or in security is silent and expensive, while elsewhere it is loud and acceptance catches it; the safety net for `standard` is the escalation to opus after two returns from acceptance. When in doubt whether it is the core or security, write `hard`. -->
 
 ## Definition of Done for the block
 
