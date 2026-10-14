@@ -145,6 +145,19 @@ echo "содержание волны: собой ничего не ломает
 set +e
 printf 'мусор' | python3 "$GUARD" >/dev/null 2>&1
 (( $? == 0 )) && ok "мусор на входе — выход 0" || bad "мусор валит сторожа"
+echo "ширина волны: не больше max_parallel_blocks живых копий (14.10.2026 шесть блоков положили машину)"
+w="$(make_project width)"
+python3 "$KEEP" --start "$w" > /dev/null
+git -C "$w" worktree add -q "$WORK/width-a" -b feat/a 2>/dev/null
+git -C "$w" worktree add -q "$WORK/width-b" -b feat/b 2>/dev/null
+call_guard "$w"
+expect_allow "две копии при пределе 2 — блок пускается"
+git -C "$w" worktree add -q "$WORK/width-c" -b feat/c 2>/dev/null
+call_guard "$w"
+expect_deny "третья копия при пределе 2 — отказ"
+call_guard "$w" "сверь экран" "norma"
+expect_silent "короткая роль ширину волны не занимает"
+
 set -e
 
 echo

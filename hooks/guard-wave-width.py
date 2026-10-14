@@ -30,6 +30,7 @@
 
 import importlib.util
 import json
+import subprocess
 import os
 import re
 import sys
@@ -50,6 +51,50 @@ def load_keep_building():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+DEFAULT_MAX_PARALLEL_BLOCKS = 2
+# Ниже этой доли свободной памяти (по `memory_pressure`) новый блок не стартует.
+MIN_FREE_MEMORY_PCT = 25
+
+
+def setting(name: str):
+    """Значение ключа из профиля, иначе из дефолтов системы; нет — None."""
+    sources = [Path.home() / ".claude" / "furca" / "profile.md",
+               Path(__file__).resolve().parent.parent / "config.defaults.md"]
+    for src in sources:
+        try:
+            for line in src.read_text(encoding="utf-8").splitlines():
+                key, sep, rest = line.partition(":")
+                if sep and key.strip() == name:
+                    value = rest.split("#", 1)[0].strip().strip('"')
+                    if value:
+                        return value
+        except OSError:
+            continue
+    return None
+
+
+def live_block_copies(root) -> int:
+    """Рабочие копии репозитория, кроме основной: каждая — живой или несданный блок."""
+    out = subprocess.run(["git", "-C", str(root), "worktree", "list", "--porcelain"],
+                         capture_output=True, text=True, timeout=10).stdout
+    return max(0, sum(1 for line in out.splitlines() if line.startswith("worktree ")) - 1)
+
+
+def free_memory_pct():
+    """Свободная память по `memory_pressure` (macOS); не узнали — None."""
+    try:
+        out = subprocess.run(["memory_pressure"], capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in out.splitlines():
+        if "free percentage" in line:
+            try:
+                return int(line.rsplit(":", 1)[1].strip().rstrip("%"))
+            except ValueError:
+                return None
+    return None
 
 
 def launched_role(payload: dict) -> str:
@@ -163,6 +208,22 @@ def main() -> int:
              "мелочь по дороге; либо вынеси владельцу списком, если это заход "
              "работы. Правило и причина — в скилле стройки, раздел «Ради чего "
              "всё это».")
+        return 0
+
+    limit = int(setting("max_parallel_blocks") or DEFAULT_MAX_PARALLEL_BLOCKS)
+    copies = live_block_copies(root)
+    if copies > limit:
+        deny(f"Живых копий блоков {copies}, а на этой машине можно не больше {limit} "
+             "(`max_parallel_blocks` в профиле). 14.10.2026 волна из шести блоков на "
+             "Маке с 16 ГБ съела всю память и 20 ГБ свопа — машина встала и ушла в "
+             "перезагрузку. Сначала прими или убери сданные блоки (`git worktree "
+             "remove`), потом запускай следующий.")
+        return 0
+    free = free_memory_pct()
+    if free is not None and free < MIN_FREE_MEMORY_PCT:
+        deny(f"Свободной памяти {free}% — меньше {MIN_FREE_MEMORY_PCT}%. Новый блок "
+             "сейчас положит машину: дождись, пока сдадутся идущие, и посмотри, что "
+             "держит память (`ps -axo rss,comm | sort -rn | head`).")
         return 0
 
     inform(

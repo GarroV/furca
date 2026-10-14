@@ -4,6 +4,7 @@ language: en              # язык разговора с владельцем 
 session_model_recommended: opus
 agent_models: {}          # переопределения моделей субагентов; пусто = как в agents/*.md
 converge_limit: 3
+max_parallel_blocks: 2     # сколько блок-агентов одновременно на этой машине; держит guard-wave-width.py (14.10.2026 шесть блоков на Маке 16 ГБ съели память и 20 ГБ свопа)
 autocompact_window: 400000  # рекомендуемый порог автокомпакта сессии в токенах; 0 = не проверять
 test_platform: local
 stand_host: ""            # ssh-хост площадки стендов блоков и приёмки; пусто = стенды на этой машине
