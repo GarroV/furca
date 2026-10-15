@@ -2,10 +2,14 @@
 """Сторож содержания волны: блок-агент не запускается на служебных задачах.
 
 Ставится на событие PreToolUse и смотрит запуски блок-агентов, пока в проекте
-идёт стройка. Отказ у него ровно один: волна, все задачи которой помечены блоком
+идёт стройка. Отказов у него три. Первый не зависит от стройки: бриф блок-агента
+(`artifex`) с незаполненным `{{…}}` (#155) — диспетчер заполняет шаблон руками, и
+пропущенное поле молча доезжало до агента (`{{port range}}` вместо портов).
+Второй: волна, все задачи которой помечены блоком
 `chores`, — то есть заход, который построит оснастку вместо продукта. Короткие
 роли (`SHORT_ROLES`) волной не считаются: они живут минуты, а `norma` ещё и
-единственная, кем закрывается сверка экрана.
+единственная, кем закрывается сверка экрана. Третий — потолок ширины волны и
+сторож памяти (14.10.2026).
 
 **Чего здесь больше нет.** До 25.09.2026 этот же хук считал ширину волны от
 остатка лимита подписки: предупреждал с 70%, сужал до одного блока к 85%,
@@ -112,6 +116,20 @@ def launched_role(payload: dict) -> str:
     return role if isinstance(role, str) else ""
 
 
+# Незаполненное поле шаблона брифа: `{{port range}}`, `{{language}}`.
+PLACEHOLDER = re.compile(r"\{\{[^{}\n]*[^{}\n\W\d_][^{}\n]*\}\}")
+BLOCK_ROLE = "artifex"
+
+
+def unfilled_placeholders(payload: dict):
+    """Различные `{{…}}` в брифе, в порядке появления."""
+    tool_input = payload.get("tool_input")
+    prompt = tool_input.get("prompt") if isinstance(tool_input, dict) else None
+    if not isinstance(prompt, str):
+        return []
+    return list(dict.fromkeys(PLACEHOLDER.findall(prompt)))
+
+
 def deny(reason: str) -> None:
     print(json.dumps({
         "hookSpecificOutput": {
@@ -190,6 +208,16 @@ def main() -> int:
         return 0
     if launched_role(payload) in SHORT_ROLES:
         return 0
+
+    # Только блок-агент: в чужих запусках `{{…}}` может быть обычным текстом.
+    if launched_role(payload) == BLOCK_ROLE:
+        left = unfilled_placeholders(payload)
+        if left:
+            deny("В брифе блок-агента остались незаполненные поля: "
+                 + ", ".join(left) + ". Шаблон `block-agent-brief.md` "
+                 "заполняется руками, и пропущенное поле дошло бы до агента "
+                 "как есть: заполни и запусти снова.")
+            return 0
 
     try:
         kb = load_keep_building()
