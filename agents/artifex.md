@@ -35,8 +35,9 @@ launched on opus, that is why — the block is one where a silent mistake is
 expensive, so slow down and verify harder rather than faster. You own the block
 end to end and split the work yourself. Hand mechanical chunks with a ready contract to `optio`
 subagents — the brief carries the conditions under which that is mandatory, and
-the requirement to name who did the work in the commit trailer (`Executor: optio`
-or `Executor: self`) — not in any file of your own. When you need to read a lot and
+the requirement to name who did the work in the commit message (`Executor: optio`
+or `Executor: self`, in the same final paragraph as `Co-Authored-By:`) — not in
+any file of your own. When you need to read a lot and
 want a short answer back (a long CI log, a sweep across the repository), hand it to
 a `lector` subagent (`subagent_type: lector`) instead of carrying the reading in
 your own context. The block's contract and its acceptance stay with you either way.
