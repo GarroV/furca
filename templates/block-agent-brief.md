@@ -303,10 +303,29 @@ an executor's work on a different task went entirely under a commit message abou
 CSS fix. The worst case is deliberate breakage used to verify a check: committed
 and never reverted, it stops being noise and becomes a defect.
 
-**Every commit says who did the work** — a trailer line, `Executor: optio` or
+**Every commit says who did the work** — a line `Executor: optio` or
 `Executor: self`. Nothing goes in the block file: the commit is a record you are
-making anyway, so this costs no extra move, and the summary is one command
-(`git log --format=%(trailers:key=Executor)`), which is what acceptance runs.
+making anyway, so this costs no extra move. Put it in the **same final paragraph
+as `Co-Authored-By:`, with no blank line between them**:
+
+```
+fix: reject empty price list
+
+Executor: optio
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
+
+Git treats only the last paragraph as trailers, so a blank line between the two
+lines hides `Executor:` from `%(trailers)` — this has already happened on five
+projects. Acceptance does not rely on trailers: it finds the line anywhere in the
+message and prints one line per commit, `<short-hash> <optio|self|—>`:
+
+```
+for h in $(git log --format=%h <base>..HEAD); do echo "$h $(git show -s --format=%B $h | sed -nE 's/^Executor: *(optio|self) *$/\1/p' | tail -1 | grep . || echo —)"; done
+```
+
+A `—` means the mark is missing. Commits with a stray blank line are still counted
+correctly, so there is no need to rewrite history over it — never force-push for this.
 
 This is not bureaucracy. Until 08.08.2026 delegation was written as permission,
 and across 26 block-agent launches an executor was raised **not once**: nobody

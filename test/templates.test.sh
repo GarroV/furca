@@ -356,6 +356,52 @@ for rule in "${BRIEF_RULES[@]}"; do
   }
 done
 
+# Команда приёмки, читающая отметку «кто сделал», не должна зависеть от раскладки
+# сообщения: git считает трейлерами только последний абзац, а агенты ставят пустую
+# строку перед Co-Authored-By (#133, #153, #173). Берём команду из брифа, гоняем на
+# временном репозитории с обеими раскладками и без отметки, затем на испорченной
+# копии команды — она обязана провалить ту же проверку.
+ACCEPT_CMD="$(grep -E '^for h in \$\(git log' "$BRIEF" || true)"
+[[ -n "$ACCEPT_CMD" ]] || {
+  echo "FAIL: block-agent-brief.md — не найдена команда приёмки отметки Executor"
+  exit 1
+}
+if grep -qF '%(trailers' <<<"$ACCEPT_CMD"; then
+  echo "FAIL: block-agent-brief.md — команда приёмки Executor опирается на %(trailers)"
+  exit 1
+fi
+EXEC_REPO="$(mktemp -d)"
+trap 'rm -rf "$EXEC_REPO"' EXIT
+(
+  cd "$EXEC_REPO"
+  git init -q .
+  git config user.email t@t && git config user.name t
+  git commit -q --allow-empty -m "base"
+  git commit -q --allow-empty -m "a" -m "Executor: optio
+Co-Authored-By: X <x@x>"
+  git commit -q --allow-empty -m "b" -m "Executor: self" -m "Co-Authored-By: X <x@x>"
+  git commit -q --allow-empty -m "c" -m "Co-Authored-By: X <x@x>"
+)
+run_accept() { (cd "$EXEC_REPO" && bash -c "${1//<base>/HEAD~3}"); }
+accept_out="$(run_accept "$ACCEPT_CMD" | awk '{print $2}' | tr '\n' ' ')"
+# git log идёт от новых к старым: c, b, a
+[[ "$accept_out" == "— self optio " ]] || {
+  echo "FAIL: block-agent-brief.md — команда приёмки Executor выдала '$accept_out', ждали '— self optio '"
+  exit 1
+}
+BROKEN_CMD="${ACCEPT_CMD//optio|self/nobody}"
+[[ "$BROKEN_CMD" != "$ACCEPT_CMD" ]] || {
+  echo "FAIL: тест команды приёмки — порча не применилась, негативный прогон ложно зелёный"
+  exit 1
+}
+broken_out="$(run_accept "$BROKEN_CMD" | awk '{print $2}' | tr '\n' ' ')"
+[[ "$broken_out" != "— self optio " ]] || {
+  echo "FAIL: тест команды приёмки Executor не ловит испорченную команду"
+  exit 1
+}
+trap - EXIT
+rm -rf "$EXEC_REPO"
+
 # Заполненные примеры анкеты не должны отставать от шаблона: ordo будет
 # ориентироваться на них как на образцы, а переименованная секция превратит
 # образец в неверный. Сверяем набор секций и подсекций с шаблоном репозитория
