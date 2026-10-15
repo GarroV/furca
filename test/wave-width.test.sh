@@ -140,6 +140,41 @@ call_guard "$c" "твои задачи: T010, T011" "none"
 expect_deny "роль не названа — считается блоком, как раньше"
 
 echo
+echo "бриф блок-агента: незаполненные {{…}} не доезжают до агента (#155)"
+
+call_guard "$b" "порты: 4100-4110, язык: ru, твои задачи: T001"
+expect_allow "бриф заполнен — запуск блока разрешён"
+call_guard "$b" "порты: {{port range}}, язык: {{language}}, повтор: {{port range}}, T001"
+expect_deny "незаполненные поля — запуск отклонён"
+[[ "$GUARD_OUT" == *"{{port range}}"* && "$GUARD_OUT" == *"{{language}}"* ]] \
+  && ok "в отказе названы оба поля" || bad "в отказе названы не все поля"
+[[ "$GUARD_OUT" == *"заполни и запусти снова"* ]] \
+  && ok "в отказе сказано, что делать" || bad "в отказе нет «заполни и запусти снова»"
+[[ "$(grep -o '{{port range}}' <<<"$GUARD_OUT" | wc -l | tr -d ' ')" == "1" ]] \
+  && ok "повторяющееся поле названо один раз" || bad "повторяющееся поле названо больше одного раза"
+call_guard "$b" "<!-- подставь {{...}} и передай промптом --> T001"
+expect_allow "многоточие в комментарии шаблона — не поле"
+call_guard "$p" "порты: {{port range}}"
+expect_deny "отказ не зависит от того, идёт ли стройка"
+call_guard "$b" "пример шаблона: {{x}}" "general-purpose"
+expect_allow "не блок-агент с {{x}} в тексте — запуск разрешён"
+call_guard "$b" "пример шаблона: {{x}}" "optio"
+expect_silent "короткая роль с {{x}} — сторож молчит"
+
+# Негативный прогон: копия сторожа с отключенным отказом обязана провалить ту же
+# проверку; иначе проверка выше ничего не ловит. Порча проверяется на применимость.
+cp -R "$FURCA_HOME/hooks" "$WORK/hooks-broken"
+sed 's/^        if left:$/        if False:/' "$FURCA_HOME/hooks/guard-wave-width.py" > "$WORK/hooks-broken/guard-wave-width.py"
+if cmp -s "$FURCA_HOME/hooks/guard-wave-width.py" "$WORK/hooks-broken/guard-wave-width.py"; then
+  bad "порча сторожа не применилась — негативный прогон был бы ложно зелёным"
+else
+  REAL_GUARD="$GUARD"; GUARD="$WORK/hooks-broken/guard-wave-width.py"
+  call_guard "$b" "порты: {{port range}}, T001"
+  if [[ "$GUARD_OUT" == *'"deny"'* ]]; then bad "испорченный сторож всё ещё отказывает"; else ok "испорченный сторож пропускает {{…}} — проверка выше его ловит"; fi
+  GUARD="$REAL_GUARD"
+fi
+
+echo
 echo "содержание волны: собой ничего не ломает"
 
 set +e
