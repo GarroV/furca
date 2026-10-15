@@ -178,19 +178,19 @@ curl -s "http://<адрес>:8090/inbox?project=someone-else" -H "Authorization:
 
 ## Где живёт сейчас (с 26.09.2026)
 
-Канал переехал с домашнего сервера (MUSPELHEIM засыпает и сам не просыпается —
+Канал переехал с домашнего сервера (он засыпает и сам не просыпается —
 канал молчал именно тогда, когда нужен) на VPS Contabo. Решение и мотив —
 `GarroV/vps-infra`, `decisions.md`, запись от 26.09; эксплуатация — issue vps-infra#6.
 
 | Что | Где |
 |---|---|
 | Код | `/srv/furca-channel` на VPS (`ssh contabo`), копия `channel/`, compose-проект `furca-channel` |
-| Порт | `127.0.0.1:8090` на VPS, в tailnet через `tailscale serve --tcp=8090` — `http://100.125.218.90:8090`; наружу не открыт |
+| Порт | `127.0.0.1:8090` на VPS, проброшен только в приватную сеть машин владельца — адрес в `CHANNEL_URL` (строка ниже); наружу не открыт |
 | Адрес у сессий | `CHANNEL_URL` в `~/.claude/furca/channel.env` (и старом `~/.claude/forge/channel.env`) |
 | Бэкап | ночной бэкап VPS (`vps-infra/backup`): дамп базы канала и `.env` |
 
 Обновить код на сервере — перекопировать `channel/` в `/srv/furca-channel` и
-`docker compose -p furca-channel up -d --build bot`. На MUSPELHEIM стек
+`docker compose -p furca-channel up -d --build bot`. На домашнем сервере стек
 `forge-channel` остановлен (бот, задачи `keep port open` выключены) и держится
 только как откат; `keep-port-open.ps1` на Linux не нужен.
 
