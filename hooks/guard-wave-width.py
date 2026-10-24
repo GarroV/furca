@@ -83,7 +83,13 @@ def live_block_copies(root) -> int:
     """Рабочие копии репозитория, кроме основной: каждая — живой или несданный блок."""
     out = subprocess.run(["git", "-C", str(root), "worktree", "list", "--porcelain"],
                          capture_output=True, text=True, timeout=10).stdout
-    return max(0, sum(1 for line in out.splitlines() if line.startswith("worktree ")) - 1)
+    # Блоком считается только копия вида `<репозиторий>-<блок>`: соседние копии
+    # владельца (рабочие пространства оркестратора, вторые окна) блоками не
+    # являются, и раньше съедали предел волны — 25.10.2026 копия Orca занимала
+    # третий слот из трёх.
+    prefix = Path(str(root)).resolve().name + "-"
+    paths = [line[len("worktree "):] for line in out.splitlines() if line.startswith("worktree ")]
+    return sum(1 for p in paths[1:] if Path(p).name.startswith(prefix))
 
 
 def free_memory_pct():
