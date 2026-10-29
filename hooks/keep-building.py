@@ -123,6 +123,8 @@ USAGE_FRESH_SEC = 15 * 60
 
 def usage_age():
     """Возраст снимка утилизации в секундах, или None, если его нет."""
+    if os.environ.get("FURCA_RUNTIME") == "codex":
+        return None
     try:
         with open(Path(os.path.expanduser("~")) / ".claude.json", encoding="utf-8") as fh:
             cached = json.load(fh).get("cachedUsageUtilization") or {}
@@ -161,6 +163,8 @@ def usage_windows():
     могут. Служебные записи под кодовыми именами отсеиваются здесь же — любая из
     них на 100% остановила бы стройку без причины.
     """
+    if os.environ.get("FURCA_RUNTIME") == "codex":
+        return {}
     try:
         with open(Path(os.path.expanduser("~")) / ".claude.json", encoding="utf-8") as fh:
             cached = json.load(fh).get("cachedUsageUtilization") or {}
@@ -243,6 +247,8 @@ def autocompact_window() -> int:
     (у моделей с окном в миллион токенов он около 967 тысяч), и ошибка в большую
     сторону сделала бы подготовку бесполезной, а в меньшую — навязчивой.
     """
+    if os.environ.get("FURCA_RUNTIME") == "codex":
+        return 0  # unknown; never read another runtime's settings
     raw = os.environ.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW")
     if raw:
         try:
@@ -265,6 +271,8 @@ def context_size(payload: dict) -> int:
     ходу. Файл читается с хвоста: на длинной стройке он весит мегабайты, а нужны
     последние строки.
     """
+    if os.environ.get("FURCA_RUNTIME") == "codex":
+        return 0  # Claude's transcript schema is not Codex telemetry
     transcript = payload.get("transcript_path")
     if not transcript:
         return 0
@@ -299,6 +307,8 @@ def context_size(payload: dict) -> int:
 
 
 def builds_dir() -> Path:
+    if os.environ.get("FURCA_RUNTIME_HOME"):
+        return Path(os.environ["FURCA_RUNTIME_HOME"]) / "builds"
     return Path(os.path.expanduser("~")) / ".claude" / "furca" / "builds"
 
 
@@ -439,7 +449,9 @@ CHANNEL_RECHECK_SEC = 60
 
 # Личный профиль канала: адрес и секрет. Читается только ради заголовка запроса
 # и никуда не печатается — секрет, попавший в транскрипт, пришлось бы ротировать.
-CHANNEL_PROFILE = Path(os.path.expanduser("~")) / ".claude" / "furca" / "channel.env"
+CHANNEL_PROFILE = (Path(os.environ["FURCA_RUNTIME_HOME"]) / "channel.env"
+                   if os.environ.get("FURCA_RUNTIME_HOME") else
+                   Path(os.path.expanduser("~")) / ".claude" / "furca" / "channel.env")
 
 
 def channel_access():

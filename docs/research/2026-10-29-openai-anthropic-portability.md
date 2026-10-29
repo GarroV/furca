@@ -1,6 +1,6 @@
 # Supporting OpenAI and Anthropic in FURCA and VIGIL
 
-29 October 2026. Source review and migration proposal; not implemented or a claim of Codex compatibility.
+29 October 2026. Initial source review and migration proposal. Subsequent implementation and its support boundaries are documented in [runtime integrations](../runtimes.md); this initial analysis is not evidence of a live-client check.
 
 Tracking: [FURCA #191](https://github.com/GarroV/furca/issues/191), [VIGIL #66](https://github.com/GarroV/vigil/issues/66).
 
