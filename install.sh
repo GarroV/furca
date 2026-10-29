@@ -2,6 +2,12 @@
 set -euo pipefail
 shopt -s nullglob
 FURCA_HOME="$(cd "$(dirname "$0")" && pwd)"
+if [[ "${1:-}" == "--runtime" && "${2:-}" == "codex" && "$#" == 2 ]]; then
+  exec python3 "$FURCA_HOME/adapters/codex/install.py"
+elif [[ "$#" != 0 && !( "$#" == 2 && "${1:-}" == "--runtime" && "${2:-}" == "claude" ) ]]; then
+  echo 'usage: install.sh [--runtime claude|codex]' >&2
+  exit 2
+fi
 SKILLS_DIR="${HOME}/.claude/skills"
 AGENTS_DIR="${HOME}/.claude/agents"
 PROFILE_DIR="${HOME}/.claude/furca"

@@ -64,7 +64,9 @@ MIN_FREE_MEMORY_PCT = 25
 
 def setting(name: str):
     """Значение ключа из профиля, иначе из дефолтов системы; нет — None."""
-    sources = [Path.home() / ".claude" / "furca" / "profile.md",
+    profile_home = (Path(os.environ["FURCA_RUNTIME_HOME"]) if os.environ.get("FURCA_RUNTIME_HOME")
+                    else Path.home() / ".claude" / "furca")
+    sources = [profile_home / "profile.md",
                Path(__file__).resolve().parent.parent / "config.defaults.md"]
     for src in sources:
         try:

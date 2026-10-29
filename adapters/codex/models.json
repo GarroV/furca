@@ -1,0 +1,11 @@
+{
+  "session": "gpt-6.1-sol",
+  "hard_model": "gpt-6-astra",
+  "roles": {
+    "artifex": {"model": "gpt-6.1-sol", "effort": "high"},
+    "optio": {"model": "gpt-6.1-sol", "effort": "medium"},
+    "exploratio": {"model": "gpt-6.1-sol", "effort": "medium"},
+    "norma": {"model": "gpt-6.1-sol", "effort": "medium"},
+    "lector": {"model": "gpt-6-luna", "effort": "low"}
+  }
+}
