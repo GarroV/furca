@@ -37,6 +37,9 @@ with tempfile.TemporaryDirectory() as tmp:
     assert '5а. **Контекст Codex.**' in fabrica
     assert "'.claude'/'settings.json'" not in fabrica and '~/.claude' not in fabrica
     assert 'нативная роль `artifex-hard`' in fabrica
+    assert '\nmodel: gpt-6.1-sol\n' in (codex/'furca/runtime/agents/artifex.md').read_text()
+    config=(codex/'furca/runtime/config.defaults.md').read_text()
+    assert '## Codex models' in config and 'Opus 5.5' not in config
     checker = ['python3',str(root/'adapters/codex/install.py'),'--check']
     run(checker)
     hook_config = codex/'hooks.json'

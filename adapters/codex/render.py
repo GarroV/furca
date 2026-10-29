@@ -3,6 +3,19 @@ import re
 
 
 def render(text, home, policy):
+    if "## Про модели —" in text:
+        rows = "\n".join(f"| {name} | {setting['model']} | {setting['effort']} |"
+                         for name, setting in policy["roles"].items())
+        section = ("## Codex models\n\nAssignments come from the separate Codex models.json policy, "
+                   "not Claude frontmatter. Change that policy and reinstall. Nonempty "
+                   "agent_models overrides are refused.\n\n| Role | Model | Effort |\n|---|---|---|\n"
+                   + rows + f"\n| artifex-hard | {policy['hard_model']} | high |\n\n"
+                   + f"Session recommendation: {policy['session']}. Hard/core/security blocks "
+                   "and escalation after two returns use the native artifex-hard profile. "
+                   "Model availability and observed identity must be verified in the runtime.\n\n")
+        text, count = re.subn(r"## Про модели —.*?(?=## Где живут копии блоков)", section, text, flags=re.S)
+        if count != 1:
+            raise ValueError("shared model-section boundaries changed; update the Codex renderer")
     text = re.sub(r"Определение даёт \*\*Sonnet\*\*:.*?(?=- \*\*Блок с)",
                   "В Codex обычный блок запускается ролью `artifex`. Для двух случаев ниже "
                   "запускай нативную роль `artifex-hard`: её модель закреплена отдельно, "

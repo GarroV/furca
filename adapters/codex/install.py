@@ -83,6 +83,10 @@ def main():
             raw = source.read_text()
             inputs[str(rel)] = digest(raw)
             text = render(raw, home, policy)
+            if base == "agents":
+                fields, _ = definition(raw)
+                text = text.replace("\nmodel: " + fields["model"] + "\n",
+                                    "\nmodel: " + policy["roles"][fields["name"]]["model"] + "\n", 1)
             if source.suffix == ".md":
                 if raw.startswith("---\n"):
                     _, front, body = text.split("---", 2)
