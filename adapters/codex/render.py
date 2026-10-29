@@ -12,7 +12,12 @@ def render(text, home, policy):
                    + rows + f"\n| artifex-hard | {policy['hard_model']} | high |\n\n"
                    + f"Session recommendation: {policy['session']}. Hard/core/security blocks "
                    "and escalation after two returns use the native artifex-hard profile. "
-                   "Model availability and observed identity must be verified in the runtime.\n\n")
+                   "Model availability and observed identity must be verified in the runtime.\n\n"
+                   "## Codex context management\n\nThe exact compaction threshold and current usage "
+                   "are unavailable to this adapter; do not read Claude telemetry as a substitute. "
+                   "Persist tasks, progress, questions and decisions as work proceeds. Before an "
+                   "interruption, save received results; after compaction, reconstruct the build "
+                   "from those project files. The shared uncommitted-state reminder still applies.\n\n")
         text, count = re.subn(r"## Про модели —.*?(?=## Где живут копии блоков)", section, text, flags=re.S)
         if count != 1:
             raise ValueError("shared model-section boundaries changed; update the Codex renderer")
