@@ -89,6 +89,32 @@ check_fixture() {
     fi
   done
 
+  # Проверка 0: в каждой строке задачи столько колонок, сколько в заголовке (#196).
+  # Неэкранированная труба в тексте задачи (`/api/demo/enter|reset`) даёт лишнюю
+  # колонку: issue и этап сдвигаются, а зеркалирование в трекер по регулярному
+  # выражению молча пропускает такую задачу. Живой случай — T021 на LANX: 31 из 32
+  # создана, проверка целостности зелёная. Экранированные (\|) и стоящие в
+  # inline-коде трубы разделителями не считаются (mask_pipes).
+  local hdr hdr_cols trow_m tcols tid_c
+  hdr="$(grep -m1 -E '^\| *id *\|' "$TASKS" || true)"
+  if [[ -n "$hdr" ]]; then
+    hdr_cols="$(awk -F'|' '{print NF-2}' <<< "$(mask_pipes "$hdr")")"
+    while IFS= read -r trow; do
+      [[ -z "$trow" ]] && continue
+      trow_m="$(mask_pipes "$trow")"
+      tcols="$(awk -F'|' '{print NF-2}' <<< "$trow_m")"
+      if [[ "$tcols" != "$hdr_cols" ]]; then
+        tid_c="$(awk -F'|' '{print $2}' <<< "$trow_m" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+        echo "FAIL: [$FIXTURE] tasks.md ($tid_c): колонок $tcols вместо $hdr_cols, как в заголовке"
+        echo "      Чаще всего в тексте задачи стоит «|» — экранируй как \\| или убери."
+        echo "      Лишний разделитель ищи здесь (каждое поле с новой строки):"
+        awk -F'|' '{for (i = 2; i < NF; i++) printf "        %d: %s\n", i - 1, $i}' <<< "$trow_m" \
+          | unmask_pipes
+        exit 1
+      fi
+    done < <(grep -E '^\| *T[0-9]{3} *\|' "$TASKS" || true)
+  fi
+
   # Проверка 1: все id из колонки "блокирует" (questions.md) существуют в tasks.md
   local row qid blocks_field refs ref
   while IFS= read -r row; do
@@ -366,6 +392,7 @@ check_fixture() {
   fi
   while IFS= read -r srow; do
     [[ -z "$srow" ]] && continue
+    srow="$(mask_pipes "$srow")"  # труба в тексте задачи сдвинула бы колонку «этап»
     sstage="$(awk -F'|' '{print $8}' <<< "$srow" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
     [[ -z "$sstage" || "$sstage" == "—" ]] && continue
     [[ "$sstage" =~ ^[0-9]+$ ]] || {
